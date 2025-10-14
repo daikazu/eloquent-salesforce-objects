@@ -10,6 +10,12 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/daikazu/eloquent-salesforce-objects/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/daikazu/eloquent-salesforce-objects/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/daikazu/eloquent-salesforce-objects.svg?style=flat-square)](https://packagist.org/packages/daikazu/eloquent-salesforce-objects)
 
+> **⚠️ WORK IN PROGRESS**
+>
+> This package is currently under active development and should be considered **alpha/beta quality**. While it is functional and tested, the API may change, and there may be undiscovered bugs.
+>
+> **Use at your own risk in production environments.** We recommend thorough testing in development/staging environments before deploying to production. Please report any issues you encounter!
+
 Eloquent Salesforce Objects is a powerful Laravel package built on top of the excellent [omniphx/forrest](https://github.com/omniphx/forrest) package. It provides an Eloquent-style interface for working with Salesforce objects, allowing you to define Salesforce models just like Eloquent models and interact with your Salesforce data using familiar Laravel conventions.
 
 ## Features
