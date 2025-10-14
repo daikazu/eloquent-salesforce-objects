@@ -6,7 +6,6 @@ namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceHelper;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\Grammar;
 use Illuminate\Support\Str;

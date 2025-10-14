@@ -119,7 +119,7 @@ class SOQLBatch extends Collection
 
         foreach ($this->chunk($this->batchSize) as $chunk) {
             // Build batch request payload
-            $batchRequests = $chunk->map(fn($query): array => [
+            $batchRequests = $chunk->map(fn ($query): array => [
                 'method' => 'GET',
                 'url'    => $this->apiVersion . '/query?q=' . urlencode((string) $query->builder->toSql()),
             ])->values()->toArray();

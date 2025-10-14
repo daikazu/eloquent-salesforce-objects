@@ -377,7 +377,7 @@ class SalesforceAdapter implements AdapterInterface
         if ($this->metadataCacheTtl > 0 && $objectName) {
             $cacheKey = "salesforce_describe_{$objectName}";
 
-            return Cache::remember($cacheKey, $this->metadataCacheTtl, fn(): array => $this->performDescribe($objectName));
+            return Cache::remember($cacheKey, $this->metadataCacheTtl, fn (): array => $this->performDescribe($objectName));
         }
 
         return $this->performDescribe($objectName);

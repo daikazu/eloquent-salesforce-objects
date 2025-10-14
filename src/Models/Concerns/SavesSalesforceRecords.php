@@ -151,7 +151,7 @@ trait SavesSalesforceRecords
                 ->getUpdateableFields($this->getTable());
 
             // Keep only fields that are in the updateable list
-            return array_filter($attributes, fn($value, $key): bool => in_array($key, $updateableFields), ARRAY_FILTER_USE_BOTH);
+            return array_filter($attributes, fn ($value, $key): bool => in_array($key, $updateableFields), ARRAY_FILTER_USE_BOTH);
         } catch (Throwable $e) {
             // If we can't get updateable fields (e.g., API error), log and return filtered by system fields only
             // This provides basic protection even if describe call fails
