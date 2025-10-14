@@ -109,7 +109,7 @@ class SOQLHasOneOrMany extends Relation
     {
         $foreign = $this->getForeignKeyName();
 
-        return $results->mapToDictionary(fn($result): array => [$result->{$foreign} => $result])->all();
+        return $results->mapToDictionary(fn ($result): array => [$result->{$foreign} => $result])->all();
     }
 
     /**

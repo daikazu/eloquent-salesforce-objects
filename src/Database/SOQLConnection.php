@@ -56,7 +56,7 @@ class SOQLConnection extends Connection
             // Wrap query execution with cache
             return $this->queryCache->remember(
                 $statement,
-                fn(): array => $this->executeQuery($statement),
+                fn (): array => $this->executeQuery($statement),
                 $this->cacheOptions
             );
         });

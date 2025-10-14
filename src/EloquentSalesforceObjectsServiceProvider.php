@@ -36,13 +36,13 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
 
     public function registeringPackage(): void
     {
-        $this->app->singleton(AuthenticationManager::class, fn($app): \Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager => new AuthenticationManager);
+        $this->app->singleton(AuthenticationManager::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager => new AuthenticationManager);
 
-        $this->app->singleton(ResponseParser::class, fn($app): \Daikazu\EloquentSalesforceObjects\Support\ResponseParser => new ResponseParser);
+        $this->app->singleton(ResponseParser::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\ResponseParser => new ResponseParser);
 
-        $this->app->singleton(QueryCache::class, fn($app): \Daikazu\EloquentSalesforceObjects\Support\QueryCache => new QueryCache);
+        $this->app->singleton(QueryCache::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\QueryCache => new QueryCache);
 
-        $this->app->singleton(SalesforceAdapter::class, fn($app): \Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter => new SalesforceAdapter(
+        $this->app->singleton(SalesforceAdapter::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter => new SalesforceAdapter(
             $app->make(AuthenticationManager::class)
         ));
 
