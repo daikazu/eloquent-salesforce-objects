@@ -17,4 +17,12 @@ class Opportunity extends SalesforceModel
         'CloseDate' => 'datetime:Y-m-d',
     ];
 
+
+    public function lineItems()
+    {
+        return $this->hasMany(ProductLineItem::class, 'Opportunity__c', 'Id');
+
+    }
+
+
 }
