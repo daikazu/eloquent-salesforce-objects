@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+
 class SOQLHasMany extends SOQLHasOneOrMany
 {
     /**
@@ -29,4 +31,13 @@ class SOQLHasMany extends SOQLHasOneOrMany
 
         return $models;
     }
+
+    /**
+     * Match the eagerly loaded results to their parents.
+     */
+    public function match(array $models, EloquentCollection $results, $relation): array
+    {
+        return $this->matchMany($models, $results, $relation);
+    }
+
 }
