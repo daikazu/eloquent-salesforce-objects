@@ -370,8 +370,8 @@ describe('where clauses', function () {
 
         $query = Account::whereNull('Industry')->toSql();
 
-        // Laravel generates "= NULL", not "is null"
-        expect($query)->toContain('NULL');
+        // SOQL compares nulls using = null
+        expect($query)->toContain(' = null');
     });
 
     it('supports whereNotNull clause', function () {
@@ -390,8 +390,8 @@ describe('where clauses', function () {
 
         $query = Account::whereNotNull('Industry')->toSql();
 
-        // Laravel generates "<> NULL", not "is not null"
-        expect($query)->toContain('NULL');
+        // SOQL uses != null for not-null checks
+        expect($query)->toContain(' != null');
     });
 
     it('supports whereBetween clause', function () {

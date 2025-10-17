@@ -379,16 +379,43 @@ class SOQLBuilder extends Builder
         return $this->adapter->picklistValues($this->model->getTable(), $field);
     }
 
-    public function from($table): static
+    public function from($table, $as = null): static
     {
-        $this->model->setTable($table);
-        $this->query->from($table);
+        // Keep the model's table as the base table name; aliasing is handled by the query builder
+        if (is_string($table)) {
+            $this->model->setTable($table);
+        }
+
+        $this->query->from($table, $as);
         return $this;
     }
 
+    /**
+     * SOQL does not support the SQL TIME() function the same way; delegate to basic where
+     */
     public function whereTime(...$args)
     {
         return $this->where(...$args);
+    }
+
+    /**
+     * Add a "where column" clause to the query.
+     *
+     * Supports the same signatures as Laravel's whereColumn:
+     * - whereColumn('first', 'second')
+     * - whereColumn('first', '=', 'second')
+     * - whereColumn([['first', '=', 'second'], ['foo', 'bar']])
+     */
+    public function whereColumn($first, $operator = null, $second = null, $boolean = 'and'): static
+    {
+        // Salesforce SOQL does not support column-to-column comparisons in WHERE clauses.
+        // Generating such queries will lead to MALFORMED_QUERY errors like:
+        //   unexpected token: 'Some__r.Field__c'
+        // Suggest alternatives that SOQL supports.
+        throw new \InvalidArgumentException(
+            'SOQL does not support whereColumn (column-to-column comparisons). ' .
+            'Use relationship constraints (whereHas/has) or a semi-join: "Id IN (SELECT Lookup__c FROM Child__c WHERE ...)".'
+        );
     }
 
     /**

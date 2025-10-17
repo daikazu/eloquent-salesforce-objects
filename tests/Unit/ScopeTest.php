@@ -362,7 +362,7 @@ describe('scope combinations', function () {
             ->with(Mockery::on(function ($query) {
                 // Should contain both global scope and local scope conditions
                 return str_contains($query, 'IsActive = TRUE')
-                    && str_contains($query, 'Industry <> NULL')
+                    && str_contains($query, 'Industry != null')
                     && str_contains($query, 'IsVerified__c = TRUE')
                     && str_contains($query, "Industry = 'Technology'");
             }))
@@ -395,7 +395,7 @@ describe('scope combinations', function () {
             ->with(Mockery::on(function ($query) {
                 // Should have VerifiedScope and anonymous scope, but NOT ActiveScope
                 return ! str_contains($query, 'IsActive = TRUE')
-                    && str_contains($query, 'Industry <> NULL')
+                    && str_contains($query, 'Industry != null')
                     && str_contains($query, 'IsVerified__c = TRUE')
                     && str_contains($query, "Industry = 'Finance'");
             }))
