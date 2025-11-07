@@ -111,4 +111,13 @@ interface AdapterInterface
      * Access the underlying Forrest instance for operations not covered by this adapter
      */
     public function forrest(): mixed;
+
+    /**
+     * Call a custom Apex REST endpoint
+     *
+     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder/', '/services/apexrest/CreateOrder')
+     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE) and optional 'body'
+     * @return array Response data
+     */
+    public function apexRest(string $path, array $options = []): array;
 }

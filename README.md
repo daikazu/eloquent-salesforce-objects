@@ -49,6 +49,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
   - [CRUD Operations](docs/crud.md)
   - [Relationships](docs/relationships.md)
   - [Bulk Operations](docs/bulk-operations.md)
+  - [Custom Apex REST Endpoints](docs/apex-rest.md)
   - [Query Caching](docs/caching.md)
   - [Webhook Integration](docs/webhooks.md)
   - [Aggregate Functions](docs/aggregates.md)
@@ -142,6 +143,7 @@ For detailed installation and configuration instructions, see:
 ### Advanced Features
 
 - **[Bulk Operations](docs/bulk-operations.md)** - Efficient bulk insert, update, and delete
+- **[Custom Apex REST Endpoints](docs/apex-rest.md)** - Call custom Apex REST endpoints
 - **[Query Caching](docs/caching.md)** - Intelligent caching with record-level invalidation
 - **[Webhook Integration](docs/webhooks.md)** - Real-time cache invalidation with CDC
 - **[Aggregate Functions](docs/aggregates.md)** - Using COUNT, SUM, AVG, MIN, MAX
