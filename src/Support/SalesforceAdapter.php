@@ -550,8 +550,10 @@ class SalesforceAdapter implements AdapterInterface
     /**
      * Call a custom Apex REST endpoint
      *
-     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder/', '/services/apexrest/CreateOrder')
-     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE) and optional 'body'
+     * Uses Forrest's custom() method which automatically prepends /services/apexrest
+     *
+     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder', or '/CreateOrder/')
+     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE|PUT) and optional 'body' and 'parameters'
      * @return array Response data
      *
      * @throws SalesforceException
@@ -561,13 +563,10 @@ class SalesforceAdapter implements AdapterInterface
     {
         $this->ensureAuthenticated();
 
-        // Normalize the path - remove leading and trailing slashes
-        $path = trim($path, '/');
-
-        // If the path doesn't start with 'services/apexrest', prepend it
-        if (! str_starts_with($path, 'services/apexrest')) {
-            $path = 'services/apexrest/' . $path;
-        }
+        // Normalize the path - ensure it starts with / and remove trailing slashes
+//        $path = '/' . trim($path, '/');
+        
+        dump($path);
 
         // Get the HTTP method (default to GET)
         $method = strtoupper($options['method'] ?? 'GET');
@@ -579,22 +578,23 @@ class SalesforceAdapter implements AdapterInterface
         }
 
         try {
-            // Prepare the request options
-            $requestOptions = [];
+            // Prepare the request options for Forrest::custom()
+            $requestOptions = [
+                'method' => strtolower($method),
+            ];
 
             // If there's a body, reverse map the field names
             if (isset($options['body']) && is_array($options['body'])) {
                 $requestOptions['body'] = $this->parser->reverseMapFields($options['body']);
             }
 
-            // Call the appropriate Forrest method
-            $response = match ($method) {
-                'GET' => Forrest::get($path, $requestOptions),
-                'POST' => Forrest::post($path, $requestOptions),
-                'PATCH' => Forrest::patch($path, $requestOptions),
-                'DELETE' => Forrest::delete($path, $requestOptions),
-                'PUT' => Forrest::put($path, $requestOptions),
-            };
+            // If there are parameters (query string params), pass them through
+            if (isset($options['parameters']) && is_array($options['parameters'])) {
+                $requestOptions['parameters'] = $options['parameters'];
+            }
+
+            // Use Forrest::custom() which handles the /services/apexrest prefix
+            $response = Forrest::custom($path, $requestOptions);
 
             // Return the response as-is, or parse it if it's an array
             return is_array($response) ? $response : ['response' => $response];

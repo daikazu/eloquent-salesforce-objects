@@ -8,6 +8,7 @@ Learn how to interact with custom Apex REST endpoints in your Salesforce org.
 - [Basic Usage](#basic-usage)
 - [HTTP Methods](#http-methods)
 - [Request Body](#request-body)
+- [Query Parameters](#query-parameters)
 - [Response Handling](#response-handling)
 - [Path Normalization](#path-normalization)
 - [Error Handling](#error-handling)
@@ -16,7 +17,9 @@ Learn how to interact with custom Apex REST endpoints in your Salesforce org.
 
 ## Overview
 
-The `apexRest()` method provides a convenient way to call custom Apex REST endpoints in your Salesforce org. This is useful when you need to execute custom business logic or complex operations that go beyond standard CRUD operations.
+The `apexRest()` method provides a convenient way to call custom Apex REST endpoints in your Salesforce org. This method uses Forrest's `custom()` method under the hood, which automatically handles the `/services/apexrest` prefix for you.
+
+This is useful when you need to execute custom business logic or complex operations that go beyond standard CRUD operations.
 
 ### When to Use Custom Apex REST
 
@@ -191,6 +194,59 @@ $response = $adapter->apexRest('/CreateRecord', [
 ]);
 ```
 
+## Query Parameters
+
+You can pass query string parameters to your endpoint using the `parameters` option:
+
+### Basic Parameters
+
+```php
+$response = $adapter->apexRest('/SearchOrders', [
+    'method'     => 'GET',
+    'parameters' => [
+        'status' => 'active',
+        'limit'  => 10,
+    ],
+]);
+
+// This will call: /services/apexrest/SearchOrders?status=active&limit=10
+```
+
+### Complex Search
+
+```php
+$response = $adapter->apexRest('/FindProducts', [
+    'method'     => 'GET',
+    'parameters' => [
+        'category'  => 'Electronics',
+        'minPrice'  => 50,
+        'maxPrice'  => 500,
+        'inStock'   => true,
+        'sortBy'    => 'price',
+        'sortOrder' => 'asc',
+    ],
+]);
+```
+
+### With POST Body
+
+You can combine query parameters with a request body:
+
+```php
+$response = $adapter->apexRest('/ProcessOrder', [
+    'method'     => 'POST',
+    'body'       => [
+        'items' => [
+            ['productId' => 'PROD1', 'qty' => 2],
+        ],
+    ],
+    'parameters' => [
+        'validateOnly' => true,
+        'sendEmail'    => false,
+    ],
+]);
+```
+
 ## Response Handling
 
 ### Array Responses
@@ -235,7 +291,7 @@ echo $response['response'];
 
 ## Path Normalization
 
-The `apexRest()` method automatically normalizes endpoint paths for convenience.
+The `apexRest()` method automatically normalizes endpoint paths for convenience using Forrest's `custom()` method, which handles the `/services/apexrest` prefix.
 
 ### Flexible Path Formats
 
@@ -245,29 +301,38 @@ All of these work identically:
 // Simple path
 $adapter->apexRest('CreateOrder', [...]);
 
-// With leading slash
+// With leading slash (recommended - matches Forrest documentation)
 $adapter->apexRest('/CreateOrder', [...]);
 
 // With trailing slash
 $adapter->apexRest('CreateOrder/', [...]);
 
-// Full path (services/apexrest/ is not duplicated)
-$adapter->apexRest('services/apexrest/CreateOrder', [...]);
+// With both
+$adapter->apexRest('/CreateOrder/', [...]);
 
-// All of the above result in: services/apexrest/CreateOrder
+// All of the above result in the same API call to:
+// {instanceUrl}/services/apexrest/CreateOrder
 ```
 
-### Automatic Prefix
+### How It Works
 
-The `services/apexrest/` prefix is automatically added if not present:
+The adapter:
+1. Normalizes your path to ensure it starts with `/` (e.g., `CreateOrder` becomes `/CreateOrder`)
+2. Passes it to Forrest's `custom()` method
+3. Forrest automatically prepends `/services/apexrest` and your instance URL
 
 ```php
-// You provide
+// You write this
 $adapter->apexRest('/MyEndpoint');
 
-// Actual API call is made to
-// services/apexrest/MyEndpoint
+// The adapter calls
+Forrest::custom('/MyEndpoint', $options);
+
+// Forrest makes the actual API call to
+// {instanceUrl}/services/apexrest/MyEndpoint
 ```
+
+**Note:** You should NOT include `/services/apexrest` in your path - it's added automatically by Forrest.
 
 ## Error Handling
 

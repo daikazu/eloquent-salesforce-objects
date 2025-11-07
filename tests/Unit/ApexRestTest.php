@@ -22,9 +22,13 @@ describe('apexRest method', function () {
     describe('path normalization', function () {
         it('normalizes path without leading slash', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::any())
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'post' &&
+                           isset($options['body']) &&
+                           $options['body']['quantity'] === 5;
+                }))
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
             $response = $this->adapter->apexRest('CreateOrder', [
@@ -37,9 +41,9 @@ describe('apexRest method', function () {
 
         it('normalizes path with leading slash', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::any())
+                ->with('/CreateOrder', Mockery::any())
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
             $response = $this->adapter->apexRest('/CreateOrder', [
@@ -52,9 +56,9 @@ describe('apexRest method', function () {
 
         it('normalizes path with trailing slash', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::any())
+                ->with('/CreateOrder', Mockery::any())
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
             $response = $this->adapter->apexRest('CreateOrder/', [
@@ -65,26 +69,14 @@ describe('apexRest method', function () {
             expect($response)->toHaveKey('orderId');
         });
 
-        it('does not duplicate services/apexrest prefix', function () {
+        it('normalizes path with both leading and trailing slashes', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/GetStatus', Mockery::any())
-                ->andReturn(['status' => 'active']);
-
-            $response = $this->adapter->apexRest('services/apexrest/GetStatus');
-
-            expect($response)->toHaveKey('status');
-        });
-
-        it('handles full path with services/apexrest/', function () {
-            Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
-                ->once()
-                ->with('services/apexrest/CustomEndpoint', Mockery::any())
+                ->with('/CustomEndpoint', Mockery::any())
                 ->andReturn(['data' => 'value']);
 
-            $response = $this->adapter->apexRest('/services/apexrest/CustomEndpoint');
+            $response = $this->adapter->apexRest('/CustomEndpoint/');
 
             expect($response)->toHaveKey('data');
         });
@@ -93,9 +85,11 @@ describe('apexRest method', function () {
     describe('HTTP methods', function () {
         it('makes GET request when method is GET', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/GetOrder', Mockery::any())
+                ->with('/GetOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'get';
+                }))
                 ->andReturn(['orderId' => '12345', 'status' => 'pending']);
 
             $response = $this->adapter->apexRest('/GetOrder', ['method' => 'GET']);
@@ -106,10 +100,12 @@ describe('apexRest method', function () {
 
         it('makes POST request when method is POST', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::on(function ($args) {
-                    return isset($args['body']) && $args['body']['quantity'] === 10;
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'post' &&
+                           isset($options['body']) &&
+                           $options['body']['quantity'] === 10;
                 }))
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
@@ -123,10 +119,12 @@ describe('apexRest method', function () {
 
         it('makes PATCH request when method is PATCH', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('patch')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/UpdateOrder', Mockery::on(function ($args) {
-                    return isset($args['body']) && $args['body']['status'] === 'completed';
+                ->with('/UpdateOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'patch' &&
+                           isset($options['body']) &&
+                           $options['body']['status'] === 'completed';
                 }))
                 ->andReturn(['success' => true]);
 
@@ -140,9 +138,11 @@ describe('apexRest method', function () {
 
         it('makes DELETE request when method is DELETE', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('delete')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/DeleteOrder', Mockery::any())
+                ->with('/DeleteOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'delete';
+                }))
                 ->andReturn(['success' => true]);
 
             $response = $this->adapter->apexRest('/DeleteOrder', ['method' => 'DELETE']);
@@ -152,10 +152,11 @@ describe('apexRest method', function () {
 
         it('makes PUT request when method is PUT', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('put')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/ReplaceOrder', Mockery::on(function ($args) {
-                    return isset($args['body']);
+                ->with('/ReplaceOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'put' &&
+                           isset($options['body']);
                 }))
                 ->andReturn(['success' => true]);
 
@@ -169,9 +170,11 @@ describe('apexRest method', function () {
 
         it('defaults to GET when no method specified', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/GetData', Mockery::any())
+                ->with('/GetData', Mockery::on(function ($options) {
+                    return $options['method'] === 'get';
+                }))
                 ->andReturn(['data' => 'value']);
 
             $response = $this->adapter->apexRest('/GetData');
@@ -181,13 +184,15 @@ describe('apexRest method', function () {
 
         it('handles case-insensitive method names', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::any())
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return $options['method'] === 'post'; // Should be lowercase
+                }))
                 ->andReturn(['success' => true]);
 
             $response = $this->adapter->apexRest('/CreateOrder', [
-                'method' => 'post', // lowercase
+                'method' => 'post', // lowercase input
                 'body'   => ['test' => 'data'],
             ]);
 
@@ -205,13 +210,13 @@ describe('apexRest method', function () {
     describe('request body handling', function () {
         it('sends body with POST request', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::on(function ($args) {
-                    return isset($args['body']) &&
-                           $args['body']['productId'] === 'PROD123' &&
-                           $args['body']['quantity'] === 5 &&
-                           $args['body']['price'] === 99.99;
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return isset($options['body']) &&
+                           $options['body']['productId'] === 'PROD123' &&
+                           $options['body']['quantity'] === 5 &&
+                           $options['body']['price'] === 99.99;
                 }))
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
@@ -229,12 +234,12 @@ describe('apexRest method', function () {
 
         it('handles nested array data in body', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::on(function ($args) {
-                    return isset($args['body']['items']) &&
-                           is_array($args['body']['items']) &&
-                           count($args['body']['items']) === 2;
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return isset($options['body']['items']) &&
+                           is_array($options['body']['items']) &&
+                           count($options['body']['items']) === 2;
                 }))
                 ->andReturn(['success' => true]);
 
@@ -254,10 +259,10 @@ describe('apexRest method', function () {
 
         it('does not send body when not provided', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/GetStatus', Mockery::on(function ($args) {
-                    return ! isset($args['body']) || empty($args['body']);
+                ->with('/GetStatus', Mockery::on(function ($options) {
+                    return ! isset($options['body']) && $options['method'] === 'get';
                 }))
                 ->andReturn(['status' => 'active']);
 
@@ -268,12 +273,12 @@ describe('apexRest method', function () {
 
         it('applies field mapping to request body', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateRecord', Mockery::on(function ($args) {
+                ->with('/CreateRecord', Mockery::on(function ($options) {
                     // The ResponseParser reverseMapFields should convert snake_case to PascalCase
                     // This test verifies the body is passed through the parser
-                    return isset($args['body']);
+                    return isset($options['body']);
                 }))
                 ->andReturn(['success' => true]);
 
@@ -287,12 +292,34 @@ describe('apexRest method', function () {
 
             expect($response['success'])->toBeTrue();
         });
+
+        it('passes query parameters through', function () {
+            Forrest::shouldReceive('hasToken')->andReturn(true);
+            Forrest::shouldReceive('custom')
+                ->once()
+                ->with('/SearchOrders', Mockery::on(function ($options) {
+                    return isset($options['parameters']) &&
+                           $options['parameters']['status'] === 'active' &&
+                           $options['parameters']['limit'] === 10;
+                }))
+                ->andReturn(['orders' => []]);
+
+            $response = $this->adapter->apexRest('/SearchOrders', [
+                'method'     => 'GET',
+                'parameters' => [
+                    'status' => 'active',
+                    'limit'  => 10,
+                ],
+            ]);
+
+            expect($response)->toHaveKey('orders');
+        });
     });
 
     describe('response handling', function () {
         it('returns array response directly', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andReturn([
                     'orderId'    => '12345',
@@ -310,7 +337,7 @@ describe('apexRest method', function () {
 
         it('wraps non-array response in array', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andReturn('string response');
 
@@ -323,7 +350,7 @@ describe('apexRest method', function () {
 
         it('handles empty response', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('delete')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andReturn([]);
 
@@ -335,7 +362,7 @@ describe('apexRest method', function () {
 
         it('handles complex nested response', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andReturn([
                     'order' => [
@@ -366,7 +393,7 @@ describe('apexRest method', function () {
                 ->once()
                 ->andReturn(true);
 
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andReturn(['status' => 'ok']);
 
@@ -392,7 +419,7 @@ describe('apexRest method', function () {
     describe('error handling', function () {
         it('throws SalesforceException on API error', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andThrow(new \Exception('Salesforce API Error'));
 
@@ -404,7 +431,7 @@ describe('apexRest method', function () {
 
         it('includes endpoint path in error message', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andThrow(new \Exception('Not found'));
 
@@ -412,7 +439,7 @@ describe('apexRest method', function () {
                 $this->adapter->apexRest('/NonExistentEndpoint');
                 $this->fail('Expected SalesforceException was not thrown');
             } catch (SalesforceException $e) {
-                expect($e->getMessage())->toContain('services/apexrest/NonExistentEndpoint');
+                expect($e->getMessage())->toContain('/NonExistentEndpoint');
             }
         });
 
@@ -420,7 +447,7 @@ describe('apexRest method', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
 
             $originalException = new \Exception('Original error');
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
                 ->andThrow($originalException);
 
@@ -439,12 +466,12 @@ describe('apexRest method', function () {
     describe('real-world usage scenarios', function () {
         it('creates order with multiple line items', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('post')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CreateOrder', Mockery::on(function ($args) {
-                    return isset($args['body']['customerId']) &&
-                           isset($args['body']['lineItems']) &&
-                           count($args['body']['lineItems']) === 3;
+                ->with('/CreateOrder', Mockery::on(function ($options) {
+                    return isset($options['body']['customerId']) &&
+                           isset($options['body']['lineItems']) &&
+                           count($options['body']['lineItems']) === 3;
                 }))
                 ->andReturn([
                     'orderId' => 'ORD-12345',
@@ -470,13 +497,13 @@ describe('apexRest method', function () {
 
         it('retrieves order status by ID', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('get')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/GetOrderStatus', Mockery::any())
+                ->with('/GetOrderStatus', Mockery::any())
                 ->andReturn([
-                    'orderId'       => 'ORD-12345',
-                    'status'        => 'shipped',
-                    'trackingNumber' => 'TRK123456',
+                    'orderId'            => 'ORD-12345',
+                    'status'             => 'shipped',
+                    'trackingNumber'     => 'TRK123456',
                     'estimatedDelivery' => '2024-12-15',
                 ]);
 
@@ -488,11 +515,11 @@ describe('apexRest method', function () {
 
         it('updates order status', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('patch')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/UpdateOrderStatus', Mockery::on(function ($args) {
-                    return $args['body']['orderId'] === 'ORD-12345' &&
-                           $args['body']['status'] === 'delivered';
+                ->with('/UpdateOrderStatus', Mockery::on(function ($options) {
+                    return $options['body']['orderId'] === 'ORD-12345' &&
+                           $options['body']['status'] === 'delivered';
                 }))
                 ->andReturn([
                     'success'        => true,
@@ -514,19 +541,48 @@ describe('apexRest method', function () {
 
         it('cancels order', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
-            Forrest::shouldReceive('delete')
+            Forrest::shouldReceive('custom')
                 ->once()
-                ->with('services/apexrest/CancelOrder', Mockery::any())
+                ->with('/CancelOrder', Mockery::any())
                 ->andReturn([
-                    'success'        => true,
+                    'success'           => true,
                     'cancelledOrderId' => 'ORD-12345',
-                    'refundAmount'   => 299.97,
+                    'refundAmount'     => 299.97,
                 ]);
 
             $response = $this->adapter->apexRest('/CancelOrder', ['method' => 'DELETE']);
 
             expect($response['success'])->toBeTrue();
             expect($response)->toHaveKey('refundAmount');
+        });
+
+        it('searches with query parameters', function () {
+            Forrest::shouldReceive('hasToken')->andReturn(true);
+            Forrest::shouldReceive('custom')
+                ->once()
+                ->with('/SearchProducts', Mockery::on(function ($options) {
+                    return isset($options['parameters']) &&
+                           $options['parameters']['category'] === 'Electronics' &&
+                           $options['parameters']['maxPrice'] === 500;
+                }))
+                ->andReturn([
+                    'products' => [
+                        ['id' => 'P1', 'name' => 'Product 1'],
+                        ['id' => 'P2', 'name' => 'Product 2'],
+                    ],
+                    'total' => 2,
+                ]);
+
+            $response = $this->adapter->apexRest('/SearchProducts', [
+                'method'     => 'GET',
+                'parameters' => [
+                    'category' => 'Electronics',
+                    'maxPrice' => 500,
+                ],
+            ]);
+
+            expect($response['total'])->toBe(2);
+            expect($response['products'])->toHaveCount(2);
         });
     });
 });

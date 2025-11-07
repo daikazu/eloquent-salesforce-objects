@@ -115,8 +115,8 @@ interface AdapterInterface
     /**
      * Call a custom Apex REST endpoint
      *
-     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder/', '/services/apexrest/CreateOrder')
-     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE) and optional 'body'
+     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder', or '/CreateOrder/')
+     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE|PUT) and optional 'body' and 'parameters'
      * @return array Response data
      */
     public function apexRest(string $path, array $options = []): array;
