@@ -548,6 +548,62 @@ class SalesforceAdapter implements AdapterInterface
     }
 
     /**
+     * Call a custom Apex REST endpoint
+     *
+     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder/', '/services/apexrest/CreateOrder')
+     * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE) and optional 'body'
+     * @return array Response data
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function apexRest(string $path, array $options = []): array
+    {
+        $this->ensureAuthenticated();
+
+        // Normalize the path - remove leading and trailing slashes
+        $path = trim($path, '/');
+
+        // If the path doesn't start with 'services/apexrest', prepend it
+        if (! str_starts_with($path, 'services/apexrest')) {
+            $path = 'services/apexrest/' . $path;
+        }
+
+        // Get the HTTP method (default to GET)
+        $method = strtoupper($options['method'] ?? 'GET');
+
+        // Validate method
+        $allowedMethods = ['GET', 'POST', 'PATCH', 'DELETE', 'PUT'];
+        if (! in_array($method, $allowedMethods)) {
+            throw new SalesforceException("Invalid HTTP method: {$method}. Allowed methods: " . implode(', ', $allowedMethods));
+        }
+
+        try {
+            // Prepare the request options
+            $requestOptions = [];
+
+            // If there's a body, reverse map the field names
+            if (isset($options['body']) && is_array($options['body'])) {
+                $requestOptions['body'] = $this->parser->reverseMapFields($options['body']);
+            }
+
+            // Call the appropriate Forrest method
+            $response = match ($method) {
+                'GET' => Forrest::get($path, $requestOptions),
+                'POST' => Forrest::post($path, $requestOptions),
+                'PATCH' => Forrest::patch($path, $requestOptions),
+                'DELETE' => Forrest::delete($path, $requestOptions),
+                'PUT' => Forrest::put($path, $requestOptions),
+            };
+
+            // Return the response as-is, or parse it if it's an array
+            return is_array($response) ? $response : ['response' => $response];
+        } catch (Throwable $e) {
+            throw new SalesforceException("Apex REST call failed for {$path}: " . $e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
      * Resolve object name from various input types
      *
      * @param  string|object|null  $object  Salesforce object name string, SalesforceModel class string, SalesforceModel instance, or null
