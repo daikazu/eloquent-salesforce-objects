@@ -197,11 +197,29 @@ class SalesforceModel extends Model
         return $this->getTable() . 'Id';
     }
 
+    /**
+     * Get the attributes that should be cast.
+     *
+     * Salesforce timestamps are automatically cast to Carbon instances,
+     * allowing you to use methods like diffForHumans(), format(), etc.
+     * The timezone will be converted to your app's configured timezone.
+     */
     protected function casts(): array
     {
         return [
-            self::CREATED_AT => 'datetime:' . self::DATED_FORMAT,
-            self::UPDATED_AT => 'datetime:' . self::DATED_FORMAT,
+            self::CREATED_AT => 'datetime',
+            self::UPDATED_AT => 'datetime',
         ];
+    }
+
+    /**
+     * Prepare a date for array / JSON serialization.
+     *
+     * @param  \DateTimeInterface  $date
+     * @return string
+     */
+    protected function serializeDate(\DateTimeInterface $date)
+    {
+        return $date->format($this->getDateFormat());
     }
 }

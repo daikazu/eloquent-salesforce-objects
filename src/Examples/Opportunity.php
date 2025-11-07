@@ -13,16 +13,20 @@ class Opportunity extends SalesforceModel
         return $this->belongsTo(Account::class, 'AccountId');
     }
 
-    protected $casts = [
-        'CloseDate' => 'datetime:Y-m-d',
-    ];
-
+    /**
+     * Get the attributes that should be cast.
+     *
+     * Merges parent casts (CreatedDate, LastModifiedDate) with custom casts.
+     */
+    protected function casts(): array
+    {
+        return array_merge(parent::casts(), [
+            'CloseDate' => 'datetime',
+        ]);
+    }
 
     public function lineItems()
     {
         return $this->hasMany(ProductLineItem::class, 'Opportunity__c', 'Id');
-
     }
-
-
 }

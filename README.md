@@ -48,6 +48,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
   - [Querying Data](docs/querying.md)
   - [CRUD Operations](docs/crud.md)
   - [Relationships](docs/relationships.md)
+  - [Working with Timestamps](docs/timestamps.md)
   - [Bulk Operations](docs/bulk-operations.md)
   - [Custom Apex REST Endpoints](docs/apex-rest.md)
   - [Query Caching](docs/caching.md)
@@ -139,6 +140,7 @@ For detailed installation and configuration instructions, see:
 - **[Querying Data](docs/querying.md)** - Building SOQL queries with the query builder
 - **[CRUD Operations](docs/crud.md)** - Creating, reading, updating, and deleting records
 - **[Relationships](docs/relationships.md)** - Defining and using relationships between objects
+- **[Working with Timestamps](docs/timestamps.md)** - Using Carbon for date manipulation with `diffForHumans()` and more
 
 ### Advanced Features
 

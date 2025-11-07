@@ -563,11 +563,6 @@ class SalesforceAdapter implements AdapterInterface
     {
         $this->ensureAuthenticated();
 
-        // Normalize the path - ensure it starts with / and remove trailing slashes
-//        $path = '/' . trim($path, '/');
-        
-        dump($path);
-
         // Get the HTTP method (default to GET)
         $method = strtoupper($options['method'] ?? 'GET');
 
