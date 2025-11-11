@@ -327,7 +327,7 @@ describe('timestamp casting', function () {
     });
 
     it('uses correct date format constant', function () {
-        $account = new Account();
+        $account = new Account;
 
         // Verify the date format constant is correctly defined
         expect(Account::DATED_FORMAT)->toBe('Y-m-d\TH:i:s.vO');
@@ -388,4 +388,3 @@ describe('timestamp casting', function () {
         expect($opportunity->CloseDate->year)->toBe(2024);
     });
 });
-
