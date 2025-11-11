@@ -1,6 +1,36 @@
 # Salesforce Webhook Cache Invalidation Setup
 
-This guide explains how to set up webhook-based cache invalidation using Salesforce Change Data Capture (CDC). With webhooks enabled, your cache automatically invalidates when changes happen in Salesforce - even from external sources like the Salesforce UI, mobile app, or other integrations.
+> **⚠️ Important Note about Workflow Rules**
+> Salesforce has deprecated Workflow Rules and Outbound Messages in favor of **Flow Builder** and **Platform Events**. This guide has been updated to use the modern approach. If you're currently using Workflow Rules, see the [Migration from Workflow Rules](#migration-from-workflow-rules-deprecated) section below.
+
+This guide explains how to set up webhook-based cache invalidation using Salesforce Change Data Capture (CDC) or Platform Events with Flow Builder. With webhooks enabled, your cache automatically invalidates when changes happen in Salesforce - even from external sources like the Salesforce UI, mobile app, or other integrations.
+
+## Quick Start Guide
+
+Choose the best approach for your Salesforce edition:
+
+| Your Salesforce Edition | Recommended Approach | Setup Complexity |
+|------------------------|---------------------|------------------|
+| **Enterprise/Unlimited** | [Change Data Capture](#step-2-enable-change-data-capture-in-salesforce) (Step 2) | ⭐ Easy |
+| **Enterprise+ with Event Relay** | [Flow + Event Relay](#option-a-use-salesforce-event-relay-recommended-for-enterprise) (Step 4, Option A) | ⭐⭐ Moderate |
+| **Professional/Any Edition** | [Flow + Apex Callout](#option-b-use-apex-trigger--http-callout-universal) (Step 4, Option B) | ⭐⭐⭐ Advanced |
+
+**New to Salesforce webhooks?** Start with Change Data Capture (Step 2) if your edition supports it - it's the easiest and most reliable.
+
+## Table of Contents
+
+- [Why Use Webhooks?](#why-use-webhooks)
+- [Prerequisites](#prerequisites)
+- [Step 1: Configure Laravel Application](#step-1-configure-laravel-application)
+- [Step 2: Enable Change Data Capture](#step-2-enable-change-data-capture-in-salesforce) ⭐ Recommended
+- [Step 3: Configure Platform Events](#step-3-configure-salesforce-platform-events-alternative-to-cdc) (Alternative)
+- [Step 4: Set Up Flow Builder](#step-4-set-up-flow-builder-with-platform-events-modern-approach) (Modern)
+- [Step 5: Security Configuration](#step-5-security-configuration)
+- [Step 6: Testing](#step-6-testing)
+- [Step 7: Local Development](#step-7-local-development-with-ngrok)
+- [Troubleshooting](#troubleshooting)
+- [Production Recommendations](#production-recommendations)
+- [Migration from Workflow Rules](#migration-from-workflow-rules-deprecated)
 
 ## Why Use Webhooks?
 
@@ -163,26 +193,506 @@ trigger AccountChangeEvent on Account (after insert, after update, after delete,
 }
 ```
 
-## Step 4: Set Up Outbound Message (Simplest Method)
+## Step 4: Set Up Flow Builder with Platform Events (Modern Approach)
 
-For simpler setups, use Salesforce Workflow Rules with Outbound Messages:
+**Note:** Salesforce has deprecated Workflow Rules in favor of Flow Builder. Use this modern approach for new implementations.
 
-### 4.1 Create Outbound Message
+### 4.1 Create Platform Event (if not using CDC)
 
-1. **Setup** → **Workflow Rules** → **New Rule**
-2. Select object (e.g., Account)
-3. Rule Criteria: Choose when to trigger (e.g., "Every time a record is created or edited")
-4. Add Workflow Action → **New Outbound Message**
-5. Name: `Account Change Webhook`
-6. Endpoint URL: `https://your-app.com/api/salesforce/webhooks/cdc`
-7. Add secret to URL or custom header (see security section)
-8. Select fields to send (at minimum: Id)
-9. **Save & Activate**
+If you created the Platform Event in Step 3, you can reuse it. Otherwise:
 
-### 4.2 Activate Workflow Rule
+1. **Setup** → Search for **Platform Events** → **New Platform Event**
+2. **Label:** `Cache Invalidation Event`
+3. **Plural Label:** `Cache Invalidation Events`
+4. **Object Name:** `Cache_Invalidation__e`
+5. Click **Save**
+6. Add Custom Fields:
+   - **Object_Name__c** (Text, Length: 255, Required)
+   - **Record_Id__c** (Text, Length: 18, Required)
+   - **Change_Type__c** (Text, Length: 50, Required)
+   - **Timestamp__c** (Date/Time, Optional)
+7. **Save**
 
-1. Ensure workflow rule is **Active**
-2. Test by creating/updating a record in Salesforce
+### 4.2 Create a Record-Triggered Flow
+
+For each object you want to monitor (e.g., Account):
+
+1. **Setup** → Search for **Flows** → **New Flow**
+2. Select **Record-Triggered Flow** → **Next**
+3. **Configure Start:**
+   - **Object:** Account
+   - **Trigger:** A record is created or updated
+   - **Condition Requirements:** All Conditions Are Met (OR)
+     - Add condition: `Created Date` `Is Changed` `True` (for new records)
+     - Click "Add Condition" → `Last Modified Date` `Is Changed` `True` (for updates)
+   - **Optimize for:** Actions and Related Records
+4. Click **Done**
+
+5. **Add Action - Create Platform Event:**
+   - Click the **+** icon → **Action** → **Create Records**
+   - **Label:** Publish Cache Invalidation Event
+   - **How Many Records:** One
+   - **Use separate resources:** Selected
+   - **Object:** `Cache_Invalidation__e`
+   - **Set Field Values:**
+     - `Object_Name__c` = `Account` (use Text Template with literal "Account")
+     - `Record_Id__c` = `{!$Record.Id}` (Field Reference)
+     - `Change_Type__c` = `UPDATE` (or use formula to determine CREATE vs UPDATE)
+     - `Timestamp__c` = `{!$Flow.CurrentDateTime}` (optional)
+   - **Done**
+
+6. **Save the Flow:**
+   - **Flow Label:** Account Cache Invalidation
+   - **Flow API Name:** Account_Cache_Invalidation
+   - **Description:** Publishes platform event when Account records change
+   - **Save**
+
+7. **Activate the Flow:**
+   - Click **Activate**
+
+### 4.3 Subscribe to Platform Events in Laravel
+
+The package's CDC webhook endpoint (`/api/salesforce/webhooks/cdc`) can handle both Change Data Capture events AND Platform Events with the same format.
+
+However, you'll need to configure Salesforce to push Platform Events to your endpoint. You have two options:
+
+#### Option A: Use Salesforce Event Relay (Recommended for Enterprise+)
+
+Available in Enterprise Edition and above:
+
+1. **Setup** → Search for **Event Relay** → **New Event Relay Config**
+2. **Event Relay Label:** Laravel Cache Invalidation
+3. **Destination URL:** `https://your-app.com/api/salesforce/webhooks/cdc`
+4. **User:** Select a user with API access
+5. **Event Channels:** Add your Platform Event (`Cache_Invalidation__e`)
+6. **State:** Active
+7. **Save**
+
+Event Relay will automatically push Platform Events to your Laravel app in real-time.
+
+#### Option B: Use Apex Trigger + HTTP Callout (Universal)
+
+Works in all Salesforce editions:
+
+1. **Create Remote Site Setting:**
+   - **Setup** → **Remote Site Settings** → **New Remote Site**
+   - **Name:** Laravel_Webhook_Endpoint
+   - **URL:** `https://your-app.com`
+   - **Active:** Checked
+   - **Save**
+
+2. **Create Apex Class for HTTP Callout:**
+
+```apex
+public class CacheInvalidationCallout {
+    @future(callout=true)
+    public static void sendWebhook(String objectName, String recordId, String changeType) {
+        // Build the payload
+        Map<String, Object> payload = new Map<String, Object>{
+            'schema' => 'cache-invalidation-v1',
+            'payload' => new Map<String, Object>{
+                'ChangeEventHeader' => new Map<String, Object>{
+                    'entityName' => objectName,
+                    'recordIds' => new List<String>{ recordId },
+                    'changeType' => changeType,
+                    'changeOrigin' => 'com.salesforce.api.soap'
+                },
+                'Id' => recordId
+            },
+            'event' => new Map<String, Object>{
+                'replayId' => System.currentTimeMillis()
+            }
+        };
+
+        // Make HTTP callout
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint('https://your-app.com/api/salesforce/webhooks/cdc');
+        req.setMethod('POST');
+        req.setHeader('Content-Type', 'application/json');
+        req.setHeader('X-Salesforce-Webhook-Secret', 'YOUR_WEBHOOK_SECRET_HERE');
+        req.setBody(JSON.serialize(payload));
+        req.setTimeout(120000);
+
+        Http http = new Http();
+        try {
+            HttpResponse res = http.send(req);
+            System.debug('Webhook response: ' + res.getStatusCode() + ' - ' + res.getBody());
+        } catch(Exception e) {
+            System.debug('Webhook error: ' + e.getMessage());
+        }
+    }
+}
+```
+
+3. **Create Platform Event Trigger:**
+
+```apex
+trigger CacheInvalidationTrigger on Cache_Invalidation__e (after insert) {
+    for (Cache_Invalidation__e event : Trigger.New) {
+        CacheInvalidationCallout.sendWebhook(
+            event.Object_Name__c,
+            event.Record_Id__c,
+            event.Change_Type__c
+        );
+    }
+}
+```
+
+### 4.4 Option C: External Service with Flow (No Apex Required)
+
+**Recommended for:** Users who want to use Flow Builder without writing Apex code.
+
+External Services allow you to define HTTP callouts declaratively and use them in Flow Builder. This is the modern, no-code approach.
+
+#### Step 1: Create OpenAPI Specification
+
+Salesforce External Services require an OpenAPI 2.0 (Swagger) specification. Create a file named `salesforce-webhook-api.json`:
+
+```json
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Laravel Salesforce Webhook API",
+    "description": "API for cache invalidation webhooks",
+    "version": "1.0.0"
+  },
+  "host": "your-app.com",
+  "basePath": "/api/salesforce/webhooks",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "securityDefinitions": {
+    "api_key": {
+      "type": "apiKey",
+      "name": "X-Salesforce-Webhook-Secret",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "api_key": []
+    }
+  ],
+  "paths": {
+    "/cdc": {
+      "post": {
+        "summary": "Send Cache Invalidation Event",
+        "description": "Invalidates cache for specific Salesforce records",
+        "operationId": "invalidateCache",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CacheInvalidationRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/CacheInvalidationResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server Error"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "CacheInvalidationRequest": {
+      "type": "object",
+      "required": ["payload"],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "default": "cache-invalidation-v1"
+        },
+        "payload": {
+          "$ref": "#/definitions/Payload"
+        },
+        "event": {
+          "$ref": "#/definitions/Event"
+        }
+      }
+    },
+    "Payload": {
+      "type": "object",
+      "required": ["ChangeEventHeader"],
+      "properties": {
+        "ChangeEventHeader": {
+          "$ref": "#/definitions/ChangeEventHeader"
+        },
+        "Id": {
+          "type": "string",
+          "description": "Salesforce Record ID"
+        }
+      }
+    },
+    "ChangeEventHeader": {
+      "type": "object",
+      "required": ["entityName", "recordIds", "changeType"],
+      "properties": {
+        "entityName": {
+          "type": "string",
+          "description": "Salesforce object name (e.g., Account, Contact)"
+        },
+        "recordIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of record IDs that changed"
+        },
+        "changeType": {
+          "type": "string",
+          "enum": ["CREATE", "UPDATE", "DELETE", "UNDELETE"],
+          "description": "Type of change that occurred"
+        },
+        "changeOrigin": {
+          "type": "string",
+          "default": "com.salesforce.api.soap"
+        }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "properties": {
+        "replayId": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "CacheInvalidationResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "records_affected": {
+          "type": "integer"
+        },
+        "invalidation_type": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+**Important:** Replace `your-app.com` with your actual domain.
+
+#### Step 2: Register External Service in Salesforce
+
+1. **Setup** → Search for **External Services** → **Add an External Service**
+
+2. **External Service Details:**
+   - **External Service Name:** `Laravel_Cache_Invalidation`
+   - **Description:** `Webhook endpoint for cache invalidation`
+
+3. **Service Schema:**
+   - **Select:** Complete OpenAPI Spec from URL or File
+   - **Choose:** Upload File
+   - **Select the JSON file** you created above
+   - Click **Next**
+
+4. **Review Operations:**
+   - You should see the operation: `invalidateCache`
+   - Review the request/response schemas
+   - Click **Next**
+
+5. **Named Credential:**
+   - **Option 1: Create New Named Credential** (Recommended)
+     - **Named Credential Label:** `Laravel_App_Webhook`
+     - **URL:** `https://your-app.com`
+     - **Authentication:** Named Principal
+     - **Authentication Protocol:** Custom
+     - **Custom Headers:**
+       - **Name:** `X-Salesforce-Webhook-Secret`
+       - **Value:** Your webhook secret from `.env`
+     - Click **Save**
+
+   - **Option 2: Use Existing Named Credential**
+     - Select from dropdown if you already have one configured
+
+6. **Complete Setup:**
+   - Click **Done**
+
+#### Step 3: Configure Named Credential (if created new)
+
+After creating the External Service:
+
+1. **Setup** → **Named Credentials** → Find **Laravel_App_Webhook**
+
+2. **Edit Authentication Settings:**
+   - **Identity Type:** Named Principal
+   - **Authentication Protocol:** No Authentication (we're using custom header)
+   - **Generate Authorization Header:** Unchecked
+   - **Custom Headers:**
+     - Add: `X-Salesforce-Webhook-Secret` = `your-secret-key-here`
+
+3. **Callout Options:**
+   - Check **Allow Formulas in HTTP Header**
+   - Check **Allow Formulas in HTTP Body**
+
+4. **Save**
+
+#### Step 4: Update Your Record-Triggered Flow
+
+Now you can use the External Service in Flow Builder:
+
+1. **Open your Flow** from Step 4.2 (or create new Record-Triggered Flow)
+
+2. **Instead of creating a Platform Event**, add an External Service action:
+   - Click the **+** icon → **Action**
+   - Search for your External Service: **Laravel Cache Invalidation**
+   - Select the action: **invalidateCache**
+
+3. **Configure the Action:**
+   - **Label:** `Call Laravel Webhook`
+   - **API Name:** `Call_Laravel_Webhook`
+
+   - **Set Input Values** (map flow variables to API request):
+     - `schema`: Set to text literal `"cache-invalidation-v1"`
+     - `payload` → **New Resource** → **Apex-Defined** → Type the payload structure:
+       - `ChangeEventHeader`:
+         - `entityName`: Text literal `"Account"` (or use variable for dynamic object)
+         - `recordIds`: **New Resource** → **Collection** → Add `{!$Record.Id}`
+         - `changeType`: Decision/Formula to determine CREATE vs UPDATE vs DELETE
+           ```
+           IF(ISNEW(), "CREATE", "UPDATE")
+           ```
+         - `changeOrigin`: `"com.salesforce.api.soap"`
+       - `Id`: `{!$Record.Id}`
+     - `event`:
+       - `replayId`: Leave blank or use formula for timestamp
+
+4. **Save and Activate**
+
+#### Step 5: Simplified Flow Setup (Easier Approach)
+
+For a simpler setup, create flow variables:
+
+1. **Create Variables:**
+   - **Variable: entityName** (Text) = `"Account"`
+   - **Variable: recordId** (Text) = `{!$Record.Id}`
+   - **Variable: changeType** (Text) = Formula: `IF(ISNEW(), "CREATE", "UPDATE")`
+
+2. **Create the Request Body as Text Template:**
+   - **New Resource** → **Text Template**
+   - **API Name:** `WebhookPayload`
+   - **Body:**
+   ```json
+   {
+     "schema": "cache-invalidation-v1",
+     "payload": {
+       "ChangeEventHeader": {
+         "entityName": "{!entityName}",
+         "recordIds": ["{!recordId}"],
+         "changeType": "{!changeType}",
+         "changeOrigin": "com.salesforce.api.soap"
+       },
+       "Id": "{!recordId}"
+     },
+     "event": {
+       "replayId": {!$Flow.CurrentDateTime}
+     }
+   }
+   ```
+
+3. **Add External Service Action:**
+   - Use the External Service action
+   - Pass the `WebhookPayload` text template as the body
+
+#### Step 6: Test the External Service
+
+1. **Test in Salesforce Workbench:**
+   - Setup → Developer Console → Anonymous Apex
+   ```apex
+   ExternalService.Laravel_Cache_Invalidation.invalidateCache(
+     new Map<String, Object>{
+       'schema' => 'cache-invalidation-v1',
+       'payload' => new Map<String, Object>{
+         'ChangeEventHeader' => new Map<String, Object>{
+           'entityName' => 'Account',
+           'recordIds' => new List<String>{'001xx000003DGb2AAG'},
+           'changeType' => 'UPDATE',
+           'changeOrigin' => 'com.salesforce.api.soap'
+         },
+         'Id' => '001xx000003DGb2AAG'
+       }
+     }
+   );
+   ```
+
+2. **Test the Flow:**
+   - Go to an Account record
+   - Edit a field
+   - Save
+   - Check Debug Logs for flow execution
+   - Check Laravel logs for webhook receipt
+
+#### Benefits of External Service Approach
+
+✅ **No Apex Code Required** - Fully declarative
+✅ **Built-in Error Handling** - Flow Builder handles retries
+✅ **Easy to Maintain** - Visual configuration
+✅ **Versioning** - Can update API spec without changing flows
+✅ **Reusable** - One External Service, many flows
+✅ **Debugging** - Better error messages in Flow debug
+✅ **Security** - Named Credentials managed centrally
+
+#### Troubleshooting External Services
+
+**"Invalid OpenAPI Schema"**
+- Ensure JSON is valid (use https://jsonlint.com)
+- Salesforce only supports OpenAPI 2.0 (Swagger), not 3.0
+- All required fields must be present
+
+**"Callout Failed"**
+- Check Named Credential URL is correct
+- Verify SSL certificate is valid
+- Test endpoint with Postman first
+- Check remote site settings
+
+**"Authentication Failed"**
+- Verify webhook secret in Named Credential custom headers
+- Ensure header name matches exactly: `X-Salesforce-Webhook-Secret`
+- Check Laravel logs for auth errors
+
+For simplicity, we recommend using Platform Events + Apex Trigger approach (Option B above) or Event Relay (Option A) for Enterprise customers, unless you specifically need the External Service approach for governance or no-code requirements.
+
+### 4.5 Test the Flow
+
+1. **Test by modifying a record:**
+   - Go to an Account in Salesforce
+   - Edit any field
+   - Save
+
+2. **Check Debug Logs:**
+   - **Setup** → **Debug Logs** → **New** → Select your user
+   - Make another change
+   - View the debug log to see the flow execution
+
+3. **Verify webhook received:**
+   ```bash
+   tail -f storage/logs/laravel.log | grep "CDC webhook"
+   ```
 
 ## Step 5: Security Configuration
 
@@ -411,9 +921,102 @@ class SalesforceWebhookListener
 - Set up monitoring for webhook health
 - Consider Phase 4: Streaming API listener for very high-frequency changes
 
+## Migration from Workflow Rules (Deprecated)
+
+If you're currently using the deprecated Workflow Rules with Outbound Messages, here's how to migrate to the modern Flow Builder approach:
+
+### Why Migrate?
+
+- **Workflow Rules are deprecated** - Salesforce will eventually remove them
+- **Flow Builder is more powerful** - Better debugging, testing, and maintenance
+- **Platform Events are more reliable** - Better error handling and retry logic
+- **Future-proof your integration** - Stay on supported technology
+
+### Migration Steps
+
+#### Step 1: Identify Current Workflow Rules
+
+1. **Setup** → **Workflow Rules**
+2. Find all rules that send Outbound Messages for cache invalidation
+3. Document which objects they monitor
+
+#### Step 2: Create Replacement Flows
+
+For each Workflow Rule:
+
+1. **Note the object** (e.g., Account, Contact, Opportunity)
+2. **Note the trigger criteria** (created, updated, specific field changes)
+3. Follow [Step 4.2: Create a Record-Triggered Flow](#42-create-a-record-triggered-flow) above
+4. **Test thoroughly** before deactivating the Workflow Rule
+
+#### Step 3: Set Up Platform Event Infrastructure
+
+Follow either:
+- [Option A: Event Relay](#option-a-use-salesforce-event-relay-recommended-for-enterprise) (for Enterprise+ editions)
+- [Option B: Apex Trigger + HTTP Callout](#option-b-use-apex-trigger--http-callout-universal) (for all editions)
+
+#### Step 4: Test Side-by-Side
+
+1. **Keep Workflow Rule active** initially
+2. **Activate the new Flow**
+3. **Monitor both** for a few days
+4. **Verify** webhooks are received for both approaches
+
+#### Step 5: Deactivate Workflow Rules
+
+Once confident:
+
+1. **Deactivate** the Workflow Rule (don't delete yet)
+2. **Monitor** for any issues
+3. After 30 days of stable operation, **delete** the old Workflow Rule
+
+### Quick Comparison
+
+| Feature | Workflow Rules (Deprecated) | Flow Builder (Modern) |
+|---------|----------------------------|----------------------|
+| **Status** | Deprecated by Salesforce | Actively supported |
+| **Debugging** | Limited | Comprehensive debug tools |
+| **Testing** | Manual only | Built-in test functionality |
+| **Conditions** | Basic criteria | Complex logic, formulas, decisions |
+| **Maintenance** | Harder to understand | Visual, easier to maintain |
+| **Delivery Method** | Outbound Message | Platform Events or Event Relay |
+| **Retry Logic** | Automatic (limited visibility) | Configurable with better monitoring |
+| **Future Support** | ❌ Will be removed | ✅ Salesforce's future |
+
+### Legacy Outbound Message Documentation
+
+If you must continue using Workflow Rules temporarily, here's the legacy setup:
+
+<details>
+<summary>Click to expand legacy Workflow Rules setup (not recommended)</summary>
+
+#### Create Outbound Message (Legacy Method)
+
+⚠️ **Deprecated:** This method will be removed by Salesforce in a future release.
+
+1. **Setup** → **Workflow Rules** → **New Rule**
+2. Select object (e.g., Account)
+3. Rule Criteria: Choose when to trigger (e.g., "Every time a record is created or edited")
+4. Add Workflow Action → **New Outbound Message**
+5. Name: `Account Change Webhook`
+6. Endpoint URL: `https://your-app.com/api/salesforce/webhooks/cdc`
+7. Add secret to URL or custom header (see security section)
+8. Select fields to send (at minimum: Id)
+9. **Save & Activate**
+
+#### Activate Workflow Rule
+
+1. Ensure workflow rule is **Active**
+2. Test by creating/updating a record in Salesforce
+
+**Note:** This approach still works but should be replaced with Flow Builder as soon as possible.
+
+</details>
+
 ## Support
 
 For issues related to:
 - **Laravel package**: Open issue on GitHub
 - **Salesforce CDC setup**: Consult Salesforce documentation
-- **Webhook delivery**: Check Salesforce Setup → Outbound Messages
+- **Flow Builder setup**: Salesforce Trailhead has excellent Flow Builder training
+- **Webhook delivery**: Check Salesforce Setup → Event Relay or Debug Logs for Flow executions
