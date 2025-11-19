@@ -11,7 +11,6 @@ use Daikazu\EloquentSalesforceObjects\Database\SOQLHasOne;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\DeletesSalesforceRecords;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\HasSalesforceMetadata;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\SavesSalesforceRecords;
-use Daikazu\EloquentSalesforceObjects\Observers\CacheInvalidationObserver;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -51,19 +50,6 @@ class SalesforceModel extends Model
     //        'Id',
     //        'attributes',
     //    ];
-
-    /**
-     * Boot the model and register the cache invalidation observer
-     */
-    protected static function boot()
-    {
-        parent::boot();
-
-        // Register cache invalidation observer if auto-invalidation is enabled
-        if (config('eloquent-salesforce-objects.query_cache.auto_invalidate_on_local_changes', true)) {
-            static::observe(CacheInvalidationObserver::class);
-        }
-    }
 
     public function __construct(array $attributes = [])
     {

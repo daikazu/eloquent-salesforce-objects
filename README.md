@@ -27,8 +27,6 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
 - **Pagination** - Built-in pagination with Laravel's paginator
 - **Bulk Operations** - Efficient bulk insert, update, and delete operations
 - **Automatic Authentication** - Seamless OAuth token management via [omniphx/forrest](https://github.com/omniphx/forrest)
-- **Query Caching** - Intelligent caching with surgical record-level invalidation
-- **Cache Invalidation API** - HTTP endpoint for external systems to trigger cache updates when Salesforce data changes
 - **Field Mapping** - Automatic conversion between Laravel and Salesforce naming conventions (optional)
 
 ## Requirements
@@ -51,7 +49,6 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
   - [Working with Timestamps](docs/timestamps.md)
   - [Bulk Operations](docs/bulk-operations.md)
   - [Custom Apex REST Endpoints](docs/apex-rest.md)
-  - [Query Caching](docs/caching.md)
   - [Aggregate Functions](docs/aggregates.md)
   - [Pagination](docs/pagination.md)
   - [Troubleshooting](docs/troubleshooting.md)
@@ -117,35 +114,6 @@ $contact->account;  // belongsTo
 
 Check out the [Quickstart Guide](docs/quickstart.md) for detailed examples and step-by-step instructions.
 
-### Cache Invalidation API
-
-The package automatically exposes an HTTP endpoint that external systems can call to invalidate cached queries when Salesforce data changes:
-
-```bash
-POST /api/salesforce/webhooks/cdc
-```
-
-**How it works:**
-1. Enable the API with environment variables
-2. External systems (like Salesforce Change Data Capture) POST updates to this endpoint
-3. Cache is automatically invalidated for affected records
-4. Next query fetches fresh data from Salesforce
-
-**Example request:**
-```json
-{
-  "payload": {
-    "ChangeEventHeader": {
-      "entityName": "Opportunity",
-      "recordIds": ["006R300000F9YmbIAF"],
-      "changeType": "UPDATE"
-    }
-  }
-}
-```
-
-See the [Query Caching documentation](docs/caching.md) for configuration and usage details.
-
 ## Installation & Configuration
 
 For detailed installation and configuration instructions, see:
@@ -174,7 +142,6 @@ For detailed installation and configuration instructions, see:
 
 - **[Bulk Operations](docs/bulk-operations.md)** - Efficient bulk insert, update, and delete
 - **[Custom Apex REST Endpoints](docs/apex-rest.md)** - Call custom Apex REST endpoints
-- **[Query Caching](docs/caching.md)** - Intelligent caching with record-level invalidation and HTTP endpoint for external cache invalidation
 - **[Aggregate Functions](docs/aggregates.md)** - Using COUNT, SUM, AVG, MIN, MAX
 - **[Pagination](docs/pagination.md)** - Paginating large result sets
 

@@ -8,7 +8,6 @@ use Closure;
 use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
-use Daikazu\EloquentSalesforceObjects\Support\QueryCache;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Exception;
@@ -23,8 +22,6 @@ class SOQLConnection extends Connection
     use LogsSalesforceErrors;
 
     protected bool $enableQueryLog;
-    protected QueryCache $queryCache;
-    public array $cacheOptions = [];
 
     public function __construct(
         private readonly SalesforceAdapter $adapter,
@@ -32,7 +29,6 @@ class SOQLConnection extends Connection
     ) {
         // Cache config values for performance
         $this->enableQueryLog = config('eloquent-salesforce-objects.enable_query_log', false);
-        $this->queryCache = new QueryCache;
     }
 
     public function setGrammar(SOQLGrammar $grammar): void
@@ -52,13 +48,7 @@ class SOQLConnection extends Connection
     {
         return $this->run($query, $bindings, function ($query, $bindings): array {
             $statement = $this->prepare($query, $bindings);
-
-            // Wrap query execution with cache
-            return $this->queryCache->remember(
-                $statement,
-                fn (): array => $this->executeQuery($statement),
-                $this->cacheOptions
-            );
+            return $this->executeQuery($statement);
         });
     }
 
