@@ -47,6 +47,19 @@ return [
 
         // Require webhook validation (set to false for testing)
         'webhook_require_validation' => env('SALESFORCE_WEBHOOK_REQUIRE_VALIDATION', true),
+
+        // Related object invalidations
+        // When a parent object changes, also invalidate cache for these related objects
+        // This ensures relationships are properly refreshed
+        'related_invalidations' => [
+            // Add your object relationships here
+            // 'Opportunity' => [
+            //     'NEILON__ProductLineItems__c',
+            //     'NEILON__Proof__c',
+            //     'ChargentOrders__ChargentOrder__c',
+            //     'NEILON__Shipment__c',
+            // ],
+        ],
     ],
 
     /*

@@ -104,6 +104,9 @@ class SalesforceWebhookController extends Controller
                 $invalidationType = 'object-level';
             }
 
+            // Also invalidate related objects that may depend on this entity
+            $this->invalidateRelatedObjects($entityName, $recordIds);
+
             $logContext = [
                 'entity'            => $entityName,
                 'change_type'       => $changeType,
@@ -151,5 +154,58 @@ class SalesforceWebhookController extends Controller
             'webhook_secret_configured'    => $hasSecret,
             'timestamp'                    => now()->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Invalidate related objects that may depend on the changed entity
+     *
+     * @param  string  $entityName  The Salesforce object that changed
+     * @param  array  $recordIds  The record IDs that changed
+     */
+    protected function invalidateRelatedObjects(string $entityName, array $recordIds): void
+    {
+        // Define relationships between Salesforce objects
+        // When an object changes, also invalidate cache for related objects
+        $relatedObjects = config('eloquent-salesforce-objects.query_cache.related_invalidations', [
+            'Opportunity' => [
+                'NEILON__ProductLineItems__c',  // Line items
+                'NEILON__Proof__c',              // Proofs
+                'ChargentOrders__ChargentOrder__c', // Payments
+                'NEILON__Shipment__c',           // Shipments
+            ],
+            'Account' => [
+                'Opportunity',
+                'Contact',
+            ],
+            // Add more relationships as needed
+        ]);
+
+        // Get related objects for this entity
+        $related = $relatedObjects[$entityName] ?? [];
+
+        if (empty($related)) {
+            return;
+        }
+
+        // Invalidate cache for each related object
+        foreach ($related as $relatedObject) {
+            if ($this->queryCache->getInvalidationStrategy() === 'record') {
+                // For record-level: queries that JOIN or filter by these record IDs
+                // We flush the entire related object since we don't know which queries reference these IDs
+                $this->queryCache->flushObject($relatedObject);
+            } else {
+                // For object-level: flush the entire related object
+                $this->queryCache->flushObject($relatedObject);
+            }
+        }
+
+        if (config('eloquent-salesforce-objects.enable_query_log', false)) {
+            Log::info('Invalidated related objects', [
+                'parent_entity'   => $entityName,
+                'parent_ids'      => $recordIds,
+                'related_objects' => $related,
+                'objects_flushed' => count($related),
+            ]);
+        }
     }
 }

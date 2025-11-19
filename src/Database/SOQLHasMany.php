@@ -39,5 +39,4 @@ class SOQLHasMany extends SOQLHasOneOrMany
     {
         return $this->matchMany($models, $results, $relation);
     }
-
 }

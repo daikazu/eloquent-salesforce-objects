@@ -501,9 +501,9 @@ describe('apexRest method', function () {
                 ->once()
                 ->with('/GetOrderStatus', Mockery::any())
                 ->andReturn([
-                    'orderId'            => 'ORD-12345',
-                    'status'             => 'shipped',
-                    'trackingNumber'     => 'TRK123456',
+                    'orderId'           => 'ORD-12345',
+                    'status'            => 'shipped',
+                    'trackingNumber'    => 'TRK123456',
                     'estimatedDelivery' => '2024-12-15',
                 ]);
 
@@ -545,7 +545,7 @@ describe('apexRest method', function () {
                 ->once()
                 ->with('/CancelOrder', Mockery::any())
                 ->andReturn([
-                    'success'           => true,
+                    'success'          => true,
                     'cancelledOrderId' => 'ORD-12345',
                     'refundAmount'     => 299.97,
                 ]);

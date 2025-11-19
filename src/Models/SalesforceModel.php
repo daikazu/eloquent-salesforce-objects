@@ -13,6 +13,7 @@ use Daikazu\EloquentSalesforceObjects\Models\Concerns\HasSalesforceMetadata;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\SavesSalesforceRecords;
 use Daikazu\EloquentSalesforceObjects\Observers\CacheInvalidationObserver;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
@@ -215,10 +216,9 @@ class SalesforceModel extends Model
     /**
      * Prepare a date for array / JSON serialization.
      *
-     * @param  \DateTimeInterface  $date
      * @return string
      */
-    protected function serializeDate(\DateTimeInterface $date)
+    protected function serializeDate(DateTimeInterface $date)
     {
         return $date->format($this->getDateFormat());
     }
