@@ -477,52 +477,90 @@ If hit rate is low:
    - Development: File cache (simple)
    - Production: Redis (fast, supports tags)
 
-## Webhook-Based Cache Invalidation
+## Cache Invalidation API
 
-For real-time cache invalidation when changes happen **outside** your Laravel application (Salesforce UI, mobile app, other integrations), enable webhook support:
+The package exposes an HTTP endpoint at `POST /api/salesforce/webhooks/cdc` that external systems can call to invalidate cached queries when data changes outside your Laravel application.
+
+### Configuration
+
+Enable the cache invalidation API in your `.env` file:
 
 ```env
-# .env
 SALESFORCE_WEBHOOK_INVALIDATION=true
 SALESFORCE_WEBHOOK_SECRET=your-secure-random-secret-key
 SALESFORCE_CACHE_INVALIDATION_STRATEGY=record  # Surgical invalidation
 ```
 
-### How Webhooks Work with Record-Level Invalidation
+**Generate a secure secret:**
+```bash
+php artisan tinker --execute="echo Str::random(64);"
+```
 
-When Salesforce sends a Change Data Capture (CDC) webhook, the system uses the **configured invalidation strategy**:
+### How It Works
 
-```php
-// CDC Webhook Payload
+External systems POST a JSON payload to the endpoint describing what changed:
+
+```json
+POST /api/salesforce/webhooks/cdc
+Content-Type: application/json
+X-Salesforce-Webhook-Secret: your-secret-key
+
 {
   "payload": {
     "ChangeEventHeader": {
       "entityName": "Opportunity",
-      "recordIds": ["006xx000001ABC", "006xx000001XYZ"],  // Specific records changed
+      "recordIds": ["006xx000001ABC", "006xx000001XYZ"],
       "changeType": "UPDATE"
     }
   }
 }
-
-// With record-level strategy:
-// Only queries containing these specific Opportunities are invalidated
-// Other Opportunity queries remain cached!
-
-// With object-level strategy:
-// ALL Opportunity queries are invalidated
 ```
 
-**Benefits of Webhooks with Record-Level Invalidation:**
-- External changes (Salesforce UI) only invalidate affected queries
-- User A's changes don't thrash User B's cache
-- Maximum cache efficiency even with high-frequency external changes
-- Perfect for multi-user Salesforce orgs
+**With record-level strategy:**
+- Only queries containing these specific records are invalidated
+- Other Opportunity queries remain cached
+- Maximum cache efficiency
 
-This ensures cache stays fresh even when changes are made by other users or systems, **without sacrificing cache performance**.
+**With object-level strategy:**
+- ALL Opportunity queries are invalidated
+- Simpler but less efficient
 
-**See [Webhook Setup](webhooks.md) for complete setup instructions**, including:
-- Enabling Salesforce Change Data Capture (CDC)
-- Configuring webhook endpoints
-- Security and authentication
-- Testing and troubleshooting
-- Production recommendations
+### Testing the Endpoint
+
+**Health check:**
+```bash
+curl https://your-app.com/api/salesforce/webhooks/health
+```
+
+**Test invalidation:**
+```bash
+curl -X POST https://your-app.com/api/salesforce/webhooks/cdc \
+  -H "Content-Type: application/json" \
+  -H "X-Salesforce-Webhook-Secret: your-secret-key" \
+  -d '{
+    "payload": {
+      "ChangeEventHeader": {
+        "entityName": "Opportunity",
+        "recordIds": ["006R300000F9YmbIAF"],
+        "changeType": "UPDATE"
+      }
+    }
+  }'
+```
+
+**Expected response:**
+```json
+{
+  "success": true,
+  "message": "Cache invalidated successfully",
+  "entity": "Opportunity",
+  "records_affected": 1,
+  "invalidation_type": "record-level"
+}
+```
+
+### Security
+
+The endpoint validates requests using the `X-Salesforce-Webhook-Secret` header. Set `SALESFORCE_WEBHOOK_REQUIRE_VALIDATION=false` only for testing.
+
+**Note:** The endpoint is automatically registered by the package. No manual route setup required!
