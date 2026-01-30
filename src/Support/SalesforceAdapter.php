@@ -536,6 +536,40 @@ class SalesforceAdapter implements AdapterInterface
     }
 
     /**
+     * Get createable AND updateable field names for a Salesforce object
+     * Used to filter out read-only fields before create/update operations
+     * Note: Salesforce API uses 'updateable' (their spelling) not 'updatable'
+     *
+     * @param  string|object  $object  Salesforce object name string, SalesforceModel class string, or SalesforceModel instance
+     * @return array Array of updateable field names
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function getCreateableFields(string | object $object): array
+    {
+        // Use describe to get field metadata (cached)
+        $metadata = $this->describe($object);
+
+        $updateableFields = [];
+
+        // Extract updateable fields from metadata
+        if (isset($metadata['fields'])) {
+            foreach ($metadata['fields'] as $field) {
+                $isUpdateable = $field['updateable'] ?? false;
+                $isCreateable = $field['createable'] ?? false;
+                $fieldName = $field['name'] ?? null;
+
+                if (($isUpdateable || $isCreateable) && $fieldName) {
+                    $updateableFields[] = $fieldName;
+                }
+            }
+        }
+
+        return $updateableFields;
+    }
+
+    /**
      * Access the underlying Forrest instance for operations not covered by this adapter
      *
      * @throws AuthenticationException

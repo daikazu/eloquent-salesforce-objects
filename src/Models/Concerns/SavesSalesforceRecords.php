@@ -101,7 +101,7 @@ trait SavesSalesforceRecords
         unset($attributes['attributes']); // Remove Salesforce metadata attribute
 
         // Filter out non-createable/non-updateable fields
-        return $this->filterUpdateableFields($attributes);
+        return $this->filterCreateableFields($attributes);
     }
 
     /**
@@ -156,6 +156,51 @@ trait SavesSalesforceRecords
             // If we can't get updateable fields (e.g., API error), log and return filtered by system fields only
             // This provides basic protection even if describe call fails
             $this->logSalesforceError('Failed to get updateable fields for filtering: ' . $e->getMessage(), [
+                'exception' => $e::class,
+                'object'    => $this->getTable(),
+            ], 'warning');
+
+            return $attributes;
+        }
+    }
+
+    /**
+     * Filter attributes to only include updateable AND createable fields
+     * Removes read-only fields like CreatedDate, SystemModstamp, formula fields, etc.
+     *
+     * @param  array  $attributes  Attributes to filter
+     * @return array Filtered attributes containing only updateable fields
+     */
+    protected function filterCreateableFields(array $attributes): array
+    {
+        if ($attributes === []) {
+            return $attributes;
+        }
+
+        // Always exclude known system fields that are never updateable
+        $systemFields = [
+            'CreatedDate',
+            'CreatedById',
+            'LastModifiedDate',
+            'LastModifiedById',
+            'SystemModstamp',
+            'IsDeleted',
+        ];
+
+        // Remove system fields first
+        $attributes = array_diff_key($attributes, array_flip($systemFields));
+
+        // Get updateable fields from Salesforce metadata (cached for performance)
+        try {
+            $updateableFields = $this->getSalesforceAdapter()
+                ->getCreateableFields($this->getTable());
+
+            // Keep only fields that are in the updateable list
+            return array_filter($attributes, fn ($value, $key): bool => in_array($key, $updateableFields), ARRAY_FILTER_USE_BOTH);
+        } catch (Throwable $e) {
+            // If we can't get updateable fields (e.g., API error), log and return filtered by system fields only
+            // This provides basic protection even if describe call fails
+            $this->logSalesforceError('Failed to get createable fields for filtering: ' . $e->getMessage(), [
                 'exception' => $e::class,
                 'object'    => $this->getTable(),
             ], 'warning');
