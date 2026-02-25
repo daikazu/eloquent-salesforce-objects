@@ -531,8 +531,10 @@ class SOQLBuilder extends Builder
      */
     public function exists(): bool
     {
-        // Optimize by limiting to 1 record
-        $results = $this->limit(1)->get(['Id']);
+        // Clone the query to avoid mutating the builder's limit state
+        $query = $this->clone();
+
+        $results = $query->limit(1)->get(['Id']);
 
         return count($results) > 0;
     }

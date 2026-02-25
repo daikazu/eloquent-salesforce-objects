@@ -180,6 +180,14 @@ class SOQLConnection extends Connection
             // Transform boolean values to SOQL boolean literals
             if (is_bool($value)) {
                 $bindings[$key] = $value ? 'TRUE' : 'FALSE';
+
+                continue;
+            }
+
+            // Escape single quotes in string values to prevent SOQL injection
+            // SOQL uses backslash-escaped single quotes: O'Brien -> O\'Brien
+            if (is_string($value)) {
+                $bindings[$key] = str_replace("'", "\\'", $value);
             }
         }
 

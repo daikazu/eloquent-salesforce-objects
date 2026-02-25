@@ -273,13 +273,13 @@ class SOQLGrammar extends Grammar
             'THIS_FISCAL_QUARTER',
             'LAST_FISCAL_QUARTER',
             'NEXT_FISCAL_QUARTER',
-            'NEXT_N_FISCAL_​QUARTERS',
-            'LAST_N_FISCAL_​QUARTERS',
+            'NEXT_N_FISCAL_QUARTERS',
+            'LAST_N_FISCAL_QUARTERS',
             'THIS_FISCAL_YEAR',
             'LAST_FISCAL_YEAR',
             'NEXT_FISCAL_YEAR',
-            'NEXT_N_FISCAL_​YEARS',
-            'LAST_N_FISCAL_​YEARS',
+            'NEXT_N_FISCAL_YEARS',
+            'LAST_N_FISCAL_YEARS',
         ]);
     }
 
