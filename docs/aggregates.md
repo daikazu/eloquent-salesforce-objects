@@ -500,47 +500,8 @@ $stats = Cache::remember('dashboard_stats', 600, function () {
 
 Ensure Salesforce fields used in WHERE clauses are indexed for better performance.
 
-## Caching Aggregate Queries
-
-**Aggregate queries are NEVER cached.** This ensures you always get current, accurate counts and totals.
-
-```php
-// Always hits Salesforce API (never cached)
-$totalRevenue = Account::sum('AnnualRevenue');
-$accountCount = Account::count();
-```
-
-### Why Aggregates Aren't Cached
-
-- Aggregate results need to be current for reports and dashboards
-- Users expect accurate counts that reflect the latest data
-- Aggregate queries are relatively fast (don't return large datasets)
-- Stale aggregate data can be misleading
-
-### Manually Cache Expensive Aggregates
-
-For expensive calculations you want to cache, use explicit caching:
-
-```php
-use Illuminate\Support\Facades\Cache;
-
-// Cache for 5 minutes with explicit control
-$stats = Cache::remember('dashboard_stats', 300, function () {
-    return [
-        'total_revenue' => Account::sum('AnnualRevenue'),
-        'total_accounts' => Account::count(),
-        'avg_deal_size' => Opportunity::avg('Amount'),
-    ];
-});
-
-// Refresh when needed
-Cache::forget('dashboard_stats');
-```
-
-See [Query Caching](caching.md#aggregate-query-caching) for more details.
-
 ## Next Steps
 
 - **[Querying](querying.md)** - Learn more about query building
 - **[Pagination](pagination.md)** - Handle large result sets
-- **[Caching](caching.md)** - Optimize performance with caching
+- **[Bulk Operations](bulk-operations.md)** - Work with large datasets efficiently

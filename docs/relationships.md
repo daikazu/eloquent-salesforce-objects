@@ -691,10 +691,6 @@ $accounts = Account::with([
 ])->select(['Id', 'Name', 'Industry'])->get();
 ```
 
-### Use Caching for Relationships
-
-Relationship queries are automatically cached when query caching is enabled.
-
 ## Next Steps
 
 - **[Querying](querying.md)** - Advanced query techniques

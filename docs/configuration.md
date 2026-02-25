@@ -6,7 +6,6 @@ Complete guide to configuring the Eloquent Salesforce Objects package.
 
 - [Configuration File](#configuration-file)
 - [Environment Variables](#environment-variables)
-- [Query Caching](#query-caching)
 - [Field Mapping](#field-mapping)
 - [Error Handling](#error-handling)
 - [Performance Options](#performance-options)
@@ -45,18 +44,6 @@ SALESFORCE_API_VERSION=v64.0
 ### Optional Configuration
 
 ```env
-# Query Caching
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=3600
-SALESFORCE_CACHE_DRIVER=redis
-SALESFORCE_CACHE_INVALIDATION_STRATEGY=record
-SALESFORCE_AUTO_INVALIDATE_CACHE=true
-
-# Webhook Integration
-SALESFORCE_WEBHOOK_INVALIDATION=false
-SALESFORCE_WEBHOOK_SECRET=your-webhook-secret
-SALESFORCE_WEBHOOK_REQUIRE_VALIDATION=true
-
 # Performance
 SALESFORCE_PAGE_SIZE=200
 SALESFORCE_BULK_OPERATION_SIZE=200
@@ -71,100 +58,6 @@ SALESFORCE_QUERY_LOG=false
 SALESFORCE_THROW_EXCEPTIONS=true
 SALESFORCE_LOG_LEVEL=error
 ```
-
-## Query Caching
-
-Configure query caching for improved performance.
-
-### Enable/Disable Caching
-
-```php
-// config/eloquent-salesforce-objects.php
-'query_cache' => [
-    'enabled' => env('SALESFORCE_QUERY_CACHE', true),
-],
-```
-
-```env
-# .env
-SALESFORCE_QUERY_CACHE=true
-```
-
-### Cache TTL (Time-To-Live)
-
-```php
-'query_cache' => [
-    'default_ttl' => env('SALESFORCE_QUERY_CACHE_TTL', 3600), // 1 hour
-],
-```
-
-Override per object:
-
-```php
-'query_cache' => [
-    'ttl_overrides' => [
-        'Account' => 7200,      // 2 hours - stable data
-        'Opportunity' => 1800,   // 30 minutes - frequently changed
-        'Case' => 300,          // 5 minutes - real-time data
-    ],
-],
-```
-
-### Cache Driver
-
-```php
-'query_cache' => [
-    'driver' => env('SALESFORCE_CACHE_DRIVER', null), // null = default Laravel cache
-],
-```
-
-```env
-# .env - Recommended drivers
-SALESFORCE_CACHE_DRIVER=redis     # Best performance
-SALESFORCE_CACHE_DRIVER=memcached # Also good
-SALESFORCE_CACHE_DRIVER=file      # OK for development
-SALESFORCE_CACHE_DRIVER=database  # OK but slower
-```
-
-**Note:** Redis or Memcached recommended for production.
-
-### Invalidation Strategy
-
-```php
-'query_cache' => [
-    // 'record' - Surgical invalidation (only affected queries)
-    // 'object' - Broad invalidation (all queries for object)
-    'invalidation_strategy' => env('SALESFORCE_CACHE_INVALIDATION_STRATEGY', 'record'),
-],
-```
-
-```env
-SALESFORCE_CACHE_INVALIDATION_STRATEGY=record  # Recommended
-```
-
-### Auto-Invalidation
-
-```php
-'query_cache' => [
-    'auto_invalidate_on_local_changes' => env('SALESFORCE_AUTO_INVALIDATE_CACHE', true),
-],
-```
-
-When `true`, cache automatically invalidates when your Laravel app modifies records.
-
-**Note:** Aggregate queries (COUNT, SUM, AVG, MIN, MAX) are never cached to ensure you always get current, accurate data.
-
-### Webhook-Based Invalidation
-
-```php
-'query_cache' => [
-    'webhook_invalidation' => env('SALESFORCE_WEBHOOK_INVALIDATION', false),
-    'webhook_secret' => env('SALESFORCE_WEBHOOK_SECRET'),
-    'webhook_require_validation' => env('SALESFORCE_WEBHOOK_REQUIRE_VALIDATION', true),
-],
-```
-
-Enable for real-time cache invalidation from external Salesforce changes. See [Webhook Setup](webhooks.md).
 
 ## Field Mapping
 
@@ -289,14 +182,6 @@ Salesforce objects that don't support the `IsDeleted` field.
 
 Enable to log all SOQL queries. Useful for debugging but verbose.
 
-### Legacy Cache TTL
-
-```php
-'cache_ttl' => env('SALESFORCE_CACHE_TTL', 3600),
-```
-
-**Deprecated:** Use `query_cache.default_ttl` instead.
-
 ## Complete Configuration Example
 
 Here's a complete, recommended production configuration:
@@ -305,33 +190,6 @@ Here's a complete, recommended production configuration:
 <?php
 
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | Query Cache Configuration
-    |--------------------------------------------------------------------------
-    */
-    'query_cache' => [
-        'enabled' => env('SALESFORCE_QUERY_CACHE', true),
-        'default_ttl' => env('SALESFORCE_QUERY_CACHE_TTL', 3600),
-        'driver' => env('SALESFORCE_CACHE_DRIVER', 'redis'),
-
-        'ttl_overrides' => [
-            'Account' => 7200,      // 2 hours
-            'Contact' => 3600,       // 1 hour
-            'Opportunity' => 1800,   // 30 minutes
-            'Case' => 600,          // 10 minutes
-            'Lead' => 1800,         // 30 minutes
-        ],
-
-        'auto_invalidate_on_local_changes' => true,
-        'invalidation_strategy' => 'record',
-
-        // Webhook configuration
-        'webhook_invalidation' => env('SALESFORCE_WEBHOOK_INVALIDATION', false),
-        'webhook_secret' => env('SALESFORCE_WEBHOOK_SECRET'),
-        'webhook_require_validation' => true,
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Performance Settings
@@ -376,9 +234,6 @@ return [
 
 ```env
 # .env.local
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=300          # 5 minutes (short for development)
-SALESFORCE_CACHE_DRIVER=file            # Simple for development
 SALESFORCE_THROW_EXCEPTIONS=true        # See errors immediately
 SALESFORCE_QUERY_LOG=true               # Debug queries
 SALESFORCE_LOG_LEVEL=debug              # Verbose logging
@@ -388,67 +243,23 @@ SALESFORCE_LOG_LEVEL=debug              # Verbose logging
 
 ```env
 # .env.staging
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=1800         # 30 minutes
-SALESFORCE_CACHE_DRIVER=redis
 SALESFORCE_THROW_EXCEPTIONS=true
 SALESFORCE_QUERY_LOG=false
 SALESFORCE_LOG_LEVEL=warning
-SALESFORCE_WEBHOOK_INVALIDATION=true    # Test webhooks
 ```
 
 ### Production Environment
 
 ```env
 # .env.production
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=3600         # 1 hour
-SALESFORCE_CACHE_DRIVER=redis           # Fast, reliable
 SALESFORCE_THROW_EXCEPTIONS=false       # Graceful degradation
 SALESFORCE_QUERY_LOG=false              # No verbose logging
 SALESFORCE_LOG_LEVEL=error              # Only errors
-SALESFORCE_WEBHOOK_INVALIDATION=true    # Real-time invalidation
-SALESFORCE_CACHE_INVALIDATION_STRATEGY=record  # Efficient invalidation
 ```
 
 ## Configuration Best Practices
 
-### 1. Use Redis for Caching
-
-```env
-SALESFORCE_CACHE_DRIVER=redis
-```
-
-Redis provides the best performance and supports cache tagging.
-
-### 2. Configure Appropriate TTLs
-
-```php
-'ttl_overrides' => [
-    'Account' => 7200,      // Stable data - longer TTL
-    'Case' => 300,          // Real-time data - shorter TTL
-],
-```
-
-Match TTL to data volatility.
-
-### 3. Enable Webhooks in Production
-
-```env
-SALESFORCE_WEBHOOK_INVALIDATION=true
-```
-
-Keeps cache fresh even with external changes.
-
-### 4. Use Record-Level Invalidation
-
-```env
-SALESFORCE_CACHE_INVALIDATION_STRATEGY=record
-```
-
-More efficient for multi-user applications.
-
-### 5. Disable Exceptions in Production
+### 1. Disable Exceptions in Production
 
 ```env
 SALESFORCE_THROW_EXCEPTIONS=false
@@ -456,7 +267,7 @@ SALESFORCE_THROW_EXCEPTIONS=false
 
 Prevents user-facing errors, logs issues instead.
 
-### 6. Environment-Specific Settings
+### 2. Environment-Specific Settings
 
 Use different `.env` files for each environment with appropriate settings.
 
@@ -469,22 +280,17 @@ php artisan tinker
 ```
 
 ```php
-// Check if caching is enabled
-config('eloquent-salesforce-objects.query_cache.enabled')
+// Check error handling
+config('eloquent-salesforce-objects.throw_exceptions')
 
-// Check cache driver
-config('eloquent-salesforce-objects.query_cache.driver')
+// Check metadata cache TTL
+config('eloquent-salesforce-objects.metadata_cache_ttl')
 
-// Check invalidation strategy
-config('eloquent-salesforce-objects.query_cache.invalidation_strategy')
-
-// Check webhook settings
-config('eloquent-salesforce-objects.query_cache.webhook_invalidation')
+// Check field mapping
+config('eloquent-salesforce-objects.enable_field_mapping')
 ```
 
 ## Next Steps
 
 - **[Installation](installation.md)** - Initial setup guide
-- **[Caching](caching.md)** - Detailed caching documentation
-- **[Webhooks](webhooks.md)** - Webhook setup guide
 - **[Troubleshooting](troubleshooting.md)** - Common issues and solutions

@@ -529,4 +529,4 @@ class AccountController extends Controller
 
 - **[Querying](querying.md)** - Learn more query techniques
 - **[Performance Tips](configuration.md)** - Optimize your queries
-- **[Caching](caching.md)** - Cache paginated results
+- **[Bulk Operations](bulk-operations.md)** - Work with large datasets efficiently

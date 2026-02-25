@@ -682,5 +682,4 @@ public function createOrder(array $orderData): array
 ## Next Steps
 
 - Learn about [Bulk Operations](bulk-operations.md) for processing large datasets
-- Explore [Query Caching](caching.md) to optimize API usage
 - Check out [Error Handling](troubleshooting.md) for debugging tips

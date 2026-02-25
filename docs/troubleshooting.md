@@ -6,11 +6,9 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 - [Authentication Issues](#authentication-issues)
 - [Query Problems](#query-problems)
-- [Cache Issues](#cache-issues)
 - [Performance Problems](#performance-problems)
 - [Connection Errors](#connection-errors)
 - [Field Mapping Issues](#field-mapping-issues)
-- [Webhook Problems](#webhook-problems)
 - [General Debugging](#general-debugging)
 
 ## Authentication Issues
@@ -174,104 +172,6 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    ->where('Industry', 'Technology')
    ```
 
-## Cache Issues
-
-### Stale Data from Cache
-
-**Problem:** Queries return old cached data.
-
-**Solutions:**
-
-1. **Clear cache manually:**
-   ```bash
-   php artisan salesforce:cache-clear --all
-   php artisan cache:clear
-   ```
-
-2. **Bypass cache for specific query:**
-   ```php
-   $accounts = Account::withoutCache()->get();
-   ```
-
-3. **Refresh cache:**
-   ```php
-   $accounts = Account::refreshCache()->get();
-   ```
-
-4. **Check auto-invalidation:**
-   ```env
-   SALESFORCE_AUTO_INVALIDATE_CACHE=true
-   ```
-
-5. **Reduce TTL:**
-   ```env
-   SALESFORCE_QUERY_CACHE_TTL=600  # 10 minutes instead of 1 hour
-   ```
-
-### Cache Not Working
-
-**Problem:** Queries always hit Salesforce API, cache seems disabled.
-
-**Solutions:**
-
-1. **Verify caching is enabled:**
-   ```bash
-   php artisan tinker
-   >>> config('eloquent-salesforce-objects.query_cache.enabled')
-   => true
-   ```
-
-2. **Check cache driver supports tagging:**
-   ```env
-   # Use Redis or Memcached
-   SALESFORCE_CACHE_DRIVER=redis
-
-   # File and database have limited tagging support
-   ```
-
-3. **Clear config cache:**
-   ```bash
-   php artisan config:clear
-   ```
-
-4. **Test cache:**
-   ```php
-   use Illuminate\Support\Facades\Cache;
-
-   Cache::tags(['test'])->put('key', 'value', 600);
-   $value = Cache::tags(['test'])->get('key');
-   dd($value); // Should be 'value'
-   ```
-
-### Cache Invalidation Not Working
-
-**Problem:** Cache doesn't invalidate when records change.
-
-**Solutions:**
-
-1. **Check auto-invalidation setting:**
-   ```php
-   // config/eloquent-salesforce-objects.php
-   'auto_invalidate_on_local_changes' => true,
-   ```
-
-2. **Verify invalidation strategy:**
-   ```env
-   SALESFORCE_CACHE_INVALIDATION_STRATEGY=record
-   ```
-
-3. **Check observers are registered:**
-   ```php
-   // Should happen automatically in SalesforceModel
-   ```
-
-4. **Manual invalidation:**
-   ```php
-   use Daikazu\EloquentSalesforceObjects\Support\QueryCache;
-
-   app(QueryCache::class)->flushObject('Account');
-   ```
-
 ## Performance Problems
 
 ### Slow Queries
@@ -296,12 +196,7 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    Account::limit(100)->get();
    ```
 
-4. **Enable caching:**
-   ```env
-   SALESFORCE_QUERY_CACHE=true
-   ```
-
-5. **Use eager loading:**
+4. **Use eager loading:**
    ```php
    // N+1 problem
    $accounts = Account::all();
@@ -319,13 +214,7 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 **Solutions:**
 
-1. **Enable query caching:**
-   ```env
-   SALESFORCE_QUERY_CACHE=true
-   SALESFORCE_QUERY_CACHE_TTL=3600
-   ```
-
-2. **Use bulk operations:**
+1. **Use bulk operations:**
    ```php
    // Instead of
    foreach ($data as $item) {
@@ -336,7 +225,7 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    Contact::insert($data); // 1 API call
    ```
 
-3. **Monitor API usage:**
+2. **Monitor API usage:**
    ```php
    use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 
@@ -475,55 +364,6 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    ],
    ```
 
-## Webhook Problems
-
-### Webhooks Not Being Received
-
-**Problem:** Salesforce webhooks aren't reaching your application.
-
-**Solutions:**
-
-1. **Check endpoint is accessible:**
-   ```bash
-   curl https://your-domain.com/api/salesforce/webhooks/health
-   ```
-
-2. **Verify webhook configuration in Salesforce:**
-   - Correct endpoint URL
-   - Active workflow/CDC subscription
-   - No errors in delivery status
-
-3. **Check firewall/security groups:**
-   - Allow Salesforce IPs
-   - Port 443 (HTTPS) is open
-
-4. **View Laravel logs:**
-   ```bash
-   tail -f storage/logs/laravel.log
-   ```
-
-### Webhook Authentication Failures
-
-**Problem:** Webhooks are rejected with 401 error.
-
-**Solutions:**
-
-1. **Verify webhook secret:**
-   ```env
-   SALESFORCE_WEBHOOK_SECRET=your-correct-secret
-   ```
-
-2. **Check header name:**
-   - Should be `X-Salesforce-Webhook-Secret` or
-   - `X-Salesforce-Signature` for HMAC
-
-3. **Temporarily disable validation for testing:**
-   ```env
-   SALESFORCE_WEBHOOK_REQUIRE_VALIDATION=false
-   ```
-
-4. **Check logs for actual header received**
-
 ## General Debugging
 
 ### Enable Query Logging
@@ -605,12 +445,12 @@ If you're still experiencing issues:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `INVALID_SESSION_ID` | Session expired | Clear cache, re-authenticate |
+| `INVALID_SESSION_ID` | Session expired | Re-authenticate |
 | `MALFORMED_QUERY` | Invalid SOQL syntax | Check query with `toSql()` |
 | `INVALID_FIELD` | Field doesn't exist | Verify field API name |
 | `INVALID_TYPE` | Wrong object name | Check object API name |
 | `INSUFFICIENT_ACCESS` | No permission | Check user profile permissions |
-| `REQUEST_LIMIT_EXCEEDED` | Too many API calls | Enable caching, use bulk operations |
+| `REQUEST_LIMIT_EXCEEDED` | Too many API calls | Use bulk operations |
 | `UNABLE_TO_LOCK_ROW` | Record being edited | Retry with exponential backoff |
 | `ENTITY_IS_DELETED` | Record is deleted | Check with `withTrashed()` |
 

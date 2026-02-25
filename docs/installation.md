@@ -75,14 +75,6 @@ PASSWORD=your-salesforce-password
 SALESFORCE_API_VERSION=v64.0
 SALESFORCE_INSTANCE_URL=https://your-instance.salesforce.com
 
-# Optional: Query Caching
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=3600
-SALESFORCE_CACHE_DRIVER=redis
-
-# Optional: Cache Invalidation Strategy
-SALESFORCE_CACHE_INVALIDATION_STRATEGY=record
-SALESFORCE_AUTO_INVALIDATE_CACHE=true
 ```
 
 ### 3.3 Configure Forrest Settings
@@ -187,18 +179,6 @@ Route::get('/callback', function () {
 Users must visit `/salesforce/auth` to authorize the app.
 
 ## Optional Configuration
-
-### Enable Query Caching
-
-For better performance, enable query caching:
-
-```env
-SALESFORCE_QUERY_CACHE=true
-SALESFORCE_QUERY_CACHE_TTL=3600  # Cache for 1 hour
-SALESFORCE_CACHE_DRIVER=redis    # Use Redis (recommended)
-```
-
-See [Query Caching](caching.md) for detailed configuration.
 
 ### Enable Field Mapping
 

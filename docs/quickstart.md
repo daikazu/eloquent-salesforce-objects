@@ -319,18 +319,6 @@ echo "Created " . count($contacts) . " contacts\n";
 
 ## Performance Tips
 
-### Use Caching for Repeated Queries
-
-Queries are automatically cached by default:
-
-```php
-// First call - hits Salesforce API
-$accounts = Account::where('Industry', 'Technology')->get();
-
-// Second call - returns from cache (instant!)
-$accounts = Account::where('Industry', 'Technology')->get();
-```
-
 ### Use Bulk Operations for Multiple Records
 
 Instead of saving one at a time:
@@ -362,7 +350,6 @@ Now that you have the basics, explore more advanced features:
 - **[Models](models.md)** - Learn about model configuration and advanced features
 - **[Querying](querying.md)** - Master the query builder
 - **[Relationships](relationships.md)** - Define complex object relationships
-- **[Caching](caching.md)** - Optimize performance with intelligent caching
 - **[Bulk Operations](bulk-operations.md)** - Work with large datasets efficiently
 
 ## Getting Help

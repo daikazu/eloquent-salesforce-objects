@@ -11,7 +11,6 @@ Master the SOQL query builder to retrieve data from Salesforce.
 - [Selecting Columns](#selecting-columns)
 - [Finding Records](#finding-records)
 - [Aggregate Functions](#aggregate-functions)
-- [Query Caching](#query-caching)
 - [Raw SOQL Queries](#raw-soql-queries)
 - [Query Debugging](#query-debugging)
 
@@ -275,46 +274,6 @@ if (Account::where('Industry', 'Agriculture')->doesntExist()) {
 }
 ```
 
-## Query Caching
-
-### Automatic Caching
-
-Queries are automatically cached:
-
-```php
-// First call - hits Salesforce API and caches
-$accounts = Account::where('Industry', 'Technology')->get();
-
-// Second identical call - returns from cache
-$accounts = Account::where('Industry', 'Technology')->get();
-```
-
-### Cache Control
-
-```php
-// Skip cache for this query
-$accounts = Account::withoutCache()
-    ->where('Industry', 'Technology')
-    ->get();
-
-// Force refresh cache
-$accounts = Account::refreshCache()
-    ->where('Industry', 'Technology')
-    ->get();
-
-// Custom cache TTL (10 minutes)
-$accounts = Account::cacheFor(600)
-    ->where('Industry', 'Technology')
-    ->get();
-
-// Custom cache tags
-$accounts = Account::cacheTags(['important', 'reports'])
-    ->where('Industry', 'Technology')
-    ->get();
-```
-
-See [Query Caching](caching.md) for detailed caching documentation.
-
 ## Raw SOQL Queries
 
 ### Using Raw Queries
@@ -509,18 +468,7 @@ $accounts = Account::all();
 $accounts = Account::select(['Id', 'Name', 'Industry'])->get();
 ```
 
-### 2. Use Caching for Repeated Queries
-
-Queries are cached by default, but you can optimize:
-
-```php
-// Cache for longer if data doesn't change often
-$accounts = Account::cacheFor(7200) // 2 hours
-    ->where('Type', 'Partner')
-    ->get();
-```
-
-### 3. Limit Results
+### 2. Limit Results
 
 Always use `limit()` when you don't need all records:
 
@@ -529,7 +477,7 @@ Always use `limit()` when you don't need all records:
 $accounts = Account::latest()->limit(100)->get();
 ```
 
-### 4. Use Aggregate Functions
+### 3. Use Aggregate Functions
 
 Instead of loading all records:
 

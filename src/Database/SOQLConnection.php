@@ -53,7 +53,7 @@ class SOQLConnection extends Connection
     }
 
     /**
-     * Execute the actual Salesforce query (cache-aware)
+     * Execute the actual Salesforce query
      *
      * @param  string  $statement  Prepared SOQL statement
      * @return array Query results

@@ -9,11 +9,6 @@ beforeEach(function () {
     $forrestMock = Mockery::mock('Omniphx\\Forrest\\Interfaces\\StorageInterface');
     $this->app->instance('forrest', $forrestMock);
     Forrest::swap($forrestMock);
-
-    // Disable caching for these tests to see actual queries
-    config([
-        'eloquent-salesforce-objects.query_cache.enabled' => false,
-    ]);
 });
 
 afterEach(function () {
