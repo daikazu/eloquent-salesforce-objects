@@ -124,9 +124,8 @@ describe('global scopes (class-based)', function () {
             ->once()
             ->with(Mockery::on(function ($query) {
                 // Should contain global scope conditions from both ActiveScope and anonymous scope
-                // Note: SOQL uses 'TRUE' (uppercase) and '<> NULL' instead of 'IS NOT NULL'
                 return str_contains($query, 'IsActive = TRUE')
-                    && str_contains($query, 'Industry <> NULL')
+                    && str_contains($query, 'Industry != null')
                     && str_contains($query, 'IsVerified__c = TRUE'); // From ScopedBy attribute
             }))
             ->andReturn([
@@ -158,7 +157,7 @@ describe('global scopes (class-based)', function () {
             ->with(Mockery::on(function ($query) {
                 // Should NOT contain ActiveScope condition, but should have others
                 return ! str_contains($query, 'IsActive = TRUE')
-                    && str_contains($query, 'Industry <> NULL')
+                    && str_contains($query, 'Industry != null')
                     && str_contains($query, 'IsVerified__c = TRUE');
             }))
             ->andReturn([
@@ -191,7 +190,7 @@ describe('global scopes (class-based)', function () {
             ->with(Mockery::on(function ($query) {
                 // Should NOT contain any global scope conditions
                 return ! str_contains($query, 'IsActive = TRUE')
-                    && ! str_contains($query, 'Industry <> NULL')
+                    && ! str_contains($query, 'Industry != null')
                     && ! str_contains($query, 'IsVerified__c = TRUE');
             }))
             ->andReturn([
@@ -228,7 +227,7 @@ describe('anonymous global scopes', function () {
             ->once()
             ->with(Mockery::on(function ($query) {
                 // Should contain the anonymous scope condition
-                return str_contains($query, 'Industry <> NULL');
+                return str_contains($query, 'Industry != null');
             }))
             ->andReturn([
                 'totalSize' => 1,
@@ -258,7 +257,7 @@ describe('anonymous global scopes', function () {
             ->once()
             ->with(Mockery::on(function ($query) {
                 // Should NOT contain the industry filter, but should have other scopes
-                return ! str_contains($query, 'Industry <> NULL')
+                return ! str_contains($query, 'Industry != null')
                     && str_contains($query, 'IsActive = TRUE')
                     && str_contains($query, 'IsVerified__c = TRUE');
             }))

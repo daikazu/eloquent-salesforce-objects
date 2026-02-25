@@ -572,6 +572,9 @@ class SalesforceAdapter implements AdapterInterface
             throw new SalesforceException("Invalid HTTP method: {$method}. Allowed methods: " . implode(', ', $allowedMethods));
         }
 
+        // Normalize path: ensure leading slash, strip trailing slash
+        $path = '/' . trim($path, '/');
+
         try {
             // Prepare the request options for Forrest::custom()
             $requestOptions = [
