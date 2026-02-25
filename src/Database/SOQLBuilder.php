@@ -14,6 +14,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class SOQLBuilder extends Builder
 {
@@ -412,7 +413,7 @@ class SOQLBuilder extends Builder
         // Generating such queries will lead to MALFORMED_QUERY errors like:
         //   unexpected token: 'Some__r.Field__c'
         // Suggest alternatives that SOQL supports.
-        throw new \InvalidArgumentException(
+        throw new InvalidArgumentException(
             'SOQL does not support whereColumn (column-to-column comparisons). ' .
             'Use relationship constraints (whereHas/has) or a semi-join: "Id IN (SELECT Lookup__c FROM Child__c WHERE ...)".'
         );
