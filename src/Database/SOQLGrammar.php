@@ -211,12 +211,14 @@ class SOQLGrammar extends Grammar
 
     protected function whereNotNull(Builder $query, $where): string
     {
-        return $this->wrap($where['column']) . ' <> NULL';
+        // SOQL uses the != operator for not-null checks
+        return $this->wrap($where['column']) . ' != null';
     }
 
     protected function whereNull(Builder $query, $where): string
     {
-        return $this->wrap($where['column']) . ' = NULL';
+        // SOQL compares nulls using = null
+        return $this->wrap($where['column']) . ' = null';
     }
 
     private function whereBoolean(array $where): string
