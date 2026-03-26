@@ -194,8 +194,11 @@ class SalesforceModel extends Model
     protected function casts(): array
     {
         return [
-            self::CREATED_AT => 'datetime',
-            self::UPDATED_AT => 'datetime',
+            self::CREATED_AT      => 'datetime',
+            self::UPDATED_AT      => 'datetime',
+            'SystemModstamp'      => 'datetime',
+            'LastViewedDate'      => 'datetime',
+            'LastReferencedDate'  => 'datetime',
         ];
     }
 

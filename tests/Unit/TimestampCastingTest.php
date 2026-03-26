@@ -387,4 +387,40 @@ describe('timestamp casting', function () {
         expect($opportunity->CloseDate)->toBeInstanceOf(Carbon::class);
         expect($opportunity->CloseDate->year)->toBe(2024);
     });
+
+    it('casts SystemModstamp to Carbon instance', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        $account = new Account([
+            'Id'             => '001xx000003DGb2AAG',
+            'Name'           => 'Test',
+            'SystemModstamp' => '2024-01-15T10:30:00.000+0000',
+        ]);
+
+        expect($account->SystemModstamp)->toBeInstanceOf(Carbon::class);
+    });
+
+    it('casts LastViewedDate to Carbon instance', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        $account = new Account([
+            'Id'             => '001xx000003DGb2AAG',
+            'Name'           => 'Test',
+            'LastViewedDate' => '2024-01-15T10:30:00.000+0000',
+        ]);
+
+        expect($account->LastViewedDate)->toBeInstanceOf(Carbon::class);
+    });
+
+    it('casts LastReferencedDate to Carbon instance', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        $account = new Account([
+            'Id'               => '001xx000003DGb2AAG',
+            'Name'             => 'Test',
+            'LastReferencedDate' => '2024-01-15T10:30:00.000+0000',
+        ]);
+
+        expect($account->LastReferencedDate)->toBeInstanceOf(Carbon::class);
+    });
 });
