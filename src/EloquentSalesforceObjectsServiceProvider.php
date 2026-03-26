@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects;
 
 use Daikazu\EloquentSalesforceObjects\Commands\EloquentSalesforceObjectsCommand;
+use Daikazu\EloquentSalesforceObjects\Commands\MakeSalesforceModelCommand;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager;
 use Daikazu\EloquentSalesforceObjects\Support\ResponseParser;
@@ -26,7 +27,17 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasCommands([
                 EloquentSalesforceObjectsCommand::class,
+                MakeSalesforceModelCommand::class,
             ]);
+    }
+
+    public function bootingPackage(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__ . '/../stubs/salesforce-model.stub' => base_path('stubs/salesforce-model.stub'),
+            ], 'salesforce-stubs');
+        }
     }
 
     public function registeringPackage(): void
