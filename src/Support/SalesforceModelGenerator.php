@@ -72,4 +72,73 @@ class SalesforceModelGenerator
     {
         return $objectName !== $className;
     }
+
+    /**
+     * Extract belongsTo relationships from field metadata.
+     * Only includes fields where type is 'reference' and referenceTo has exactly one entry.
+     * Polymorphic references (multiple referenceTo) are skipped.
+     *
+     * @param  array  $fields  Field metadata from describe response
+     * @return array  Array of relationship definitions
+     */
+    public function extractBelongsToRelationships(array $fields): array
+    {
+        $relationships = [];
+
+        foreach ($fields as $field) {
+            $type = $field['type'] ?? null;
+            $referenceTo = $field['referenceTo'] ?? [];
+            $relationshipName = $field['relationshipName'] ?? null;
+            $fieldName = $field['name'] ?? null;
+
+            if ($type !== 'reference' || ! $fieldName || ! $relationshipName) {
+                continue;
+            }
+
+            // Skip polymorphic references
+            if (count($referenceTo) !== 1) {
+                continue;
+            }
+
+            $relationships[] = [
+                'type'          => 'belongsTo',
+                'relatedObject' => $referenceTo[0],
+                'foreignKey'    => $fieldName,
+                'methodName'    => lcfirst($relationshipName),
+            ];
+        }
+
+        return $relationships;
+    }
+
+    /**
+     * Extract hasMany relationships from childRelationships metadata.
+     * Skips entries with null relationshipName (internal Salesforce tracking objects).
+     *
+     * @param  array  $childRelationships  childRelationships from describe response
+     * @return array  Array of relationship definitions
+     */
+    public function extractHasManyRelationships(array $childRelationships): array
+    {
+        $relationships = [];
+
+        foreach ($childRelationships as $child) {
+            $childObject = $child['childSObject'] ?? null;
+            $field = $child['field'] ?? null;
+            $relationshipName = $child['relationshipName'] ?? null;
+
+            if (! $childObject || ! $field || ! $relationshipName) {
+                continue;
+            }
+
+            $relationships[] = [
+                'type'          => 'hasMany',
+                'relatedObject' => $childObject,
+                'foreignKey'    => $field,
+                'methodName'    => lcfirst($relationshipName),
+            ];
+        }
+
+        return $relationships;
+    }
 }
