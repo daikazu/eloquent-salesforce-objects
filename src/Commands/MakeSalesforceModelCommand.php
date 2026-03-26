@@ -91,8 +91,11 @@ class MakeSalesforceModelCommand extends Command
 
         $filePath = rtrim($outputPath, '/') . "/{$className}.php";
 
-        if (! $this->writeFile($filePath, $content)) {
-            return self::FAILURE;
+        $written = $this->writeFile($filePath, $content);
+
+        if ($written === null) {
+            // User chose to skip — not an error
+            return self::SUCCESS;
         }
 
         $this->info("Model created: {$filePath}");
@@ -245,7 +248,7 @@ class MakeSalesforceModelCommand extends Command
         return array_map(fn ($i) => $available[$i], $selected);
     }
 
-    private function writeFile(string $filePath, string $content): bool
+    private function writeFile(string $filePath, string $content): ?bool
     {
         $directory = dirname($filePath);
         if (! File::isDirectory($directory)) {
@@ -264,7 +267,7 @@ class MakeSalesforceModelCommand extends Command
 
             if ($action === 'skip') {
                 $this->info('Skipped.');
-                return false;
+                return null;
             }
 
             if ($action === 'diff') {
@@ -298,7 +301,7 @@ class MakeSalesforceModelCommand extends Command
 
                 if (! confirm('Overwrite with generated version?')) {
                     $this->info('Skipped.');
-                    return false;
+                    return null;
                 }
             }
         }
