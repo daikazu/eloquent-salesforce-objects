@@ -44,7 +44,7 @@ class SOQLConnection extends Connection
      * @param  bool  $useReadPdo  Determines whether to use the read PDO connection.
      * @return array An array of records returned by the query.
      */
-    public function select($query, $bindings = [], $useReadPdo = true): array
+    public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): array
     {
         return $this->run($query, $bindings, function ($query, $bindings): array {
             $statement = $this->prepare($query, $bindings);
@@ -123,7 +123,7 @@ class SOQLConnection extends Connection
      * @throws SalesforceException
      * @throws AuthenticationException
      */
-    public function cursor($query, $bindings = [], $useReadPdo = true): Generator
+    public function cursor($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): Generator
     {
 
         $statement = $this->run($query, $bindings, function ($query, $bindings): array {
