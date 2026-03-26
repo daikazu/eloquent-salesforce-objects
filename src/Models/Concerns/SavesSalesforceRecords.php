@@ -100,8 +100,8 @@ trait SavesSalesforceRecords
         unset($attributes[$this->getKeyName()]);
         unset($attributes['attributes']); // Remove Salesforce metadata attribute
 
-        // Filter out non-createable/non-updateable fields
-        return $this->filterUpdateableFields($attributes);
+        // Filter to only createable fields (includes create-only fields that aren't updateable)
+        return $this->filterCreateableFields($attributes);
     }
 
     /**
@@ -156,6 +156,47 @@ trait SavesSalesforceRecords
             // If we can't get updateable fields (e.g., API error), log and return filtered by system fields only
             // This provides basic protection even if describe call fails
             $this->logSalesforceError('Failed to get updateable fields for filtering: ' . $e->getMessage(), [
+                'exception' => $e::class,
+                'object'    => $this->getTable(),
+            ], 'warning');
+
+            return $attributes;
+        }
+    }
+
+    /**
+     * Filter attributes to only include createable fields.
+     * Used during insert operations to preserve fields that are createable but not updateable.
+     *
+     * @param  array  $attributes  Attributes to filter
+     * @return array Filtered attributes containing only createable fields
+     */
+    protected function filterCreateableFields(array $attributes): array
+    {
+        if ($attributes === []) {
+            return $attributes;
+        }
+
+        // Always exclude known system fields that are never createable
+        $systemFields = [
+            'CreatedDate',
+            'LastModifiedDate',
+            'LastModifiedById',
+            'SystemModstamp',
+            'IsDeleted',
+        ];
+
+        // Remove system fields first
+        $attributes = array_diff_key($attributes, array_flip($systemFields));
+
+        // Get createable fields from Salesforce metadata (cached for performance)
+        try {
+            $createableFields = $this->getSalesforceAdapter()
+                ->getCreateableFields($this->getTable());
+
+            return array_filter($attributes, fn ($value, $key): bool => in_array($key, $createableFields), ARRAY_FILTER_USE_BOTH);
+        } catch (Throwable $e) {
+            $this->logSalesforceError('Failed to get createable fields for filtering: ' . $e->getMessage(), [
                 'exception' => $e::class,
                 'object'    => $this->getTable(),
             ], 'warning');

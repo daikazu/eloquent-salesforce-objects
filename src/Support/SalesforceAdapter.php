@@ -515,24 +515,80 @@ class SalesforceAdapter implements AdapterInterface
      */
     public function getUpdateableFields(string | object $object): array
     {
-        // Use describe to get field metadata (cached)
+        return $this->getWriteableFields($object)['updateable'];
+    }
+
+    /**
+     * Get createable field names for a Salesforce object.
+     * Used to filter attributes before insert operations, since some fields
+     * are createable but not updateable (e.g., certain required fields set once at creation).
+     *
+     * @param  string|object  $object  Salesforce object name string, SalesforceModel class string, or SalesforceModel instance
+     * @return array Array of createable field names
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function getCreateableFields(string | object $object): array
+    {
+        return $this->getWriteableFields($object)['createable'];
+    }
+
+    /**
+     * Get both createable and updateable field names for a Salesforce object in a single pass.
+     * Since describe results are cached, this avoids iterating the fields array multiple times.
+     *
+     * @param  string|object  $object  Salesforce object name string, SalesforceModel class string, or SalesforceModel instance
+     * @return array{createable: array<string>, updateable: array<string>}
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function getWriteableFields(string | object $object): array
+    {
         $metadata = $this->describe($object);
 
+        $createableFields = [];
         $updateableFields = [];
 
-        // Extract updateable fields from metadata
         if (isset($metadata['fields'])) {
             foreach ($metadata['fields'] as $field) {
-                $isUpdateable = $field['updateable'] ?? false;
                 $fieldName = $field['name'] ?? null;
 
-                if ($isUpdateable && $fieldName) {
+                if (! $fieldName) {
+                    continue;
+                }
+
+                if ($field['createable'] ?? false) {
+                    $createableFields[] = $fieldName;
+                }
+
+                if ($field['updateable'] ?? false) {
                     $updateableFields[] = $fieldName;
                 }
             }
         }
 
-        return $updateableFields;
+        return [
+            'createable' => $createableFields,
+            'updateable' => $updateableFields,
+        ];
+    }
+
+    /**
+     * Get all writeable field names (createable or updateable) as a flat unique array.
+     *
+     * @param  string|object  $object  Salesforce object name string, SalesforceModel class string, or SalesforceModel instance
+     * @return array<string>
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function getAllWriteableFields(string | object $object): array
+    {
+        $fields = $this->getWriteableFields($object);
+
+        return array_values(array_unique(array_merge($fields['createable'], $fields['updateable'])));
     }
 
     /**
