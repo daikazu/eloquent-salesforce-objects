@@ -128,4 +128,30 @@ return [
     */
     'bulk_operation_size' => env('SALESFORCE_BULK_OPERATION_SIZE', 200),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Model Generation
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the make:salesforce-model artisan command.
+    |
+    | 'path' - Default directory for generated Salesforce models
+    | 'namespace' - Default namespace for generated models
+    | 'cast_map' - Maps Salesforce field types to Laravel cast types
+    |
+    */
+    'model_generation' => [
+        'path'      => app_path('Models/Salesforce'),
+        'namespace' => 'App\\Models\\Salesforce',
+        'cast_map'  => [
+            'datetime' => 'datetime',
+            'date'     => 'date',
+            'boolean'  => 'boolean',
+            'double'   => 'float',
+            'currency' => 'float',
+            'percent'  => 'float',
+            'int'      => 'integer',
+        ],
+    ],
+
 ];
