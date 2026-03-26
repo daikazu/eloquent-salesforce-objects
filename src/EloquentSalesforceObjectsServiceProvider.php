@@ -26,7 +26,6 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
             ->name('eloquent-salesforce-objects')
             ->hasConfigFile()
             ->hasCommands([
-                EloquentSalesforceObjectsCommand::class,
                 MakeSalesforceModelCommand::class,
             ]);
     }
