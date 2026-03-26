@@ -169,3 +169,135 @@ describe('relationship extraction', function () {
         expect($relationships)->toHaveCount(0);
     });
 });
+
+describe('generate', function () {
+    it('generates a basic model with no custom fields or relationships', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'Account',
+            'objectName'    => 'Account',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => null,
+            'casts'         => [],
+            'relationships' => [],
+        ]);
+
+        expect($output)->toContain('namespace App\\Models\\Salesforce;')
+            ->toContain('class Account extends SalesforceModel')
+            ->not->toContain('protected $table')
+            ->not->toContain('protected ?array $defaultColumns')
+            ->not->toContain('function casts');
+    });
+
+    it('generates model with table property when name differs', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'OpportunityProduct',
+            'objectName'    => 'Opportunity_Product__c',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => null,
+            'casts'         => [],
+            'relationships' => [],
+        ]);
+
+        expect($output)->toContain("protected \$table = 'Opportunity_Product__c';")
+            ->toContain('class OpportunityProduct extends SalesforceModel');
+    });
+
+    it('generates model with defaultColumns when fields are specified', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'Account',
+            'objectName'    => 'Account',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => ['Name', 'Industry', 'Website'],
+            'casts'         => [],
+            'relationships' => [],
+        ]);
+
+        expect($output)->toContain('protected ?array $defaultColumns = [')
+            ->toContain("'Name',")
+            ->toContain("'Industry',")
+            ->toContain("'Website',");
+    });
+
+    it('generates model with casts', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'Opportunity',
+            'objectName'    => 'Opportunity',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => null,
+            'casts'         => ['CloseDate' => 'date', 'Amount' => 'float'],
+            'relationships' => [],
+        ]);
+
+        expect($output)->toContain('protected function casts(): array')
+            ->toContain('array_merge(parent::casts()')
+            ->toContain("'CloseDate' => 'date'")
+            ->toContain("'Amount' => 'float'");
+    });
+
+    it('generates model with relationships', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'Account',
+            'objectName'    => 'Account',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => null,
+            'casts'         => [],
+            'relationships' => [
+                [
+                    'type'         => 'belongsTo',
+                    'relatedClass' => 'App\\Models\\Salesforce\\ParentAccount',
+                    'foreignKey'   => 'ParentId',
+                    'methodName'   => 'parent',
+                ],
+                [
+                    'type'         => 'hasMany',
+                    'relatedClass' => 'App\\Models\\Salesforce\\Contact',
+                    'foreignKey'   => 'AccountId',
+                    'methodName'   => 'contacts',
+                ],
+            ],
+        ]);
+
+        expect($output)->toContain('use App\\Models\\Salesforce\\ParentAccount;')
+            ->toContain('use App\\Models\\Salesforce\\Contact;')
+            ->toContain('public function parent()')
+            ->toContain('return $this->belongsTo(ParentAccount::class, \'ParentId\')')
+            ->toContain('public function contacts()')
+            ->toContain('return $this->hasMany(Contact::class, \'AccountId\')');
+    });
+
+    it('generates a fully populated model', function () {
+        $generator = new SalesforceModelGenerator();
+
+        $output = $generator->generate([
+            'className'     => 'OpportunityProduct',
+            'objectName'    => 'Opportunity_Product__c',
+            'namespace'     => 'App\\Models\\Salesforce',
+            'fields'        => ['Name', 'Amount', 'IsActive'],
+            'casts'         => ['Amount' => 'float', 'IsActive' => 'boolean'],
+            'relationships' => [
+                [
+                    'type'         => 'belongsTo',
+                    'relatedClass' => 'App\\Models\\Salesforce\\Opportunity',
+                    'foreignKey'   => 'Opportunity__c',
+                    'methodName'   => 'opportunity',
+                ],
+            ],
+        ]);
+
+        expect($output)->toContain('declare(strict_types=1);')
+            ->toContain("protected \$table = 'Opportunity_Product__c';")
+            ->toContain('protected ?array $defaultColumns = [')
+            ->toContain('protected function casts(): array')
+            ->toContain('public function opportunity()');
+    });
+});

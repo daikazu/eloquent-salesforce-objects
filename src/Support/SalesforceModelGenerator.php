@@ -141,4 +141,134 @@ class SalesforceModelGenerator
 
         return $relationships;
     }
+
+    /**
+     * Generate a Salesforce model class from structured input.
+     *
+     * @param  array{
+     *     className: string,
+     *     objectName: string,
+     *     namespace: string,
+     *     fields: ?array,
+     *     casts: array,
+     *     relationships: array,
+     * }  $config
+     * @return string  Generated PHP file content
+     */
+    public function generate(array $config): string
+    {
+        $stub = file_get_contents($this->getStubPath());
+
+        $replacements = [
+            '{{ namespace }}'      => $config['namespace'],
+            '{{ className }}'      => $config['className'],
+            '{{ imports }}'        => $this->renderImports($config['relationships']),
+            '{{ table }}'          => $this->renderTable($config['objectName'], $config['className']),
+            '{{ defaultColumns }}' => $this->renderDefaultColumns($config['fields']),
+            '{{ casts }}'          => $this->renderCasts($config['casts']),
+            '{{ relationships }}'  => $this->renderRelationships($config['relationships']),
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $stub);
+    }
+
+    /**
+     * Get the path to the stub template.
+     */
+    protected function getStubPath(): string
+    {
+        $customStub = base_path('stubs/salesforce-model.stub');
+
+        if (file_exists($customStub)) {
+            return $customStub;
+        }
+
+        return dirname(__DIR__, 2) . '/stubs/salesforce-model.stub';
+    }
+
+    protected function renderImports(array $relationships): string
+    {
+        $imports = [];
+
+        foreach ($relationships as $rel) {
+            $class = $rel['relatedClass'] ?? null;
+            if ($class) {
+                $imports[] = "use {$class};";
+            }
+        }
+
+        if ($imports === []) {
+            return '';
+        }
+
+        return "\n" . implode("\n", array_unique($imports));
+    }
+
+    protected function renderTable(string $objectName, string $className): string
+    {
+        if (! self::needsTableProperty($objectName, $className)) {
+            return '';
+        }
+
+        return "    protected \$table = '{$objectName}';\n\n";
+    }
+
+    protected function renderDefaultColumns(?array $fields): string
+    {
+        if ($fields === null) {
+            return '';
+        }
+
+        $items = implode("\n", array_map(fn (string $f): string => "        '{$f}',", $fields));
+
+        return "    protected ?array \$defaultColumns = [\n{$items}\n    ];\n\n";
+    }
+
+    protected function renderCasts(array $casts): string
+    {
+        if ($casts === []) {
+            return '';
+        }
+
+        $items = implode("\n", array_map(
+            fn (string $cast, string $field): string => "            '{$field}' => '{$cast}',",
+            $casts,
+            array_keys($casts)
+        ));
+
+        return <<<PHP
+            protected function casts(): array
+            {
+                return array_merge(parent::casts(), [
+        {$items}
+                ]);
+            }
+
+        PHP;
+    }
+
+    protected function renderRelationships(array $relationships): string
+    {
+        if ($relationships === []) {
+            return '';
+        }
+
+        $methods = [];
+
+        foreach ($relationships as $rel) {
+            $method = $rel['methodName'];
+            $type = $rel['type'];
+            $class = class_basename($rel['relatedClass']);
+            $foreignKey = $rel['foreignKey'];
+
+            $methods[] = <<<PHP
+                public function {$method}()
+                {
+                    return \$this->{$type}({$class}::class, '{$foreignKey}');
+                }
+            PHP;
+        }
+
+        return implode("\n\n", $methods) . "\n";
+    }
 }
