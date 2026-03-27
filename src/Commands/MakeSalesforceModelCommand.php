@@ -211,41 +211,27 @@ class MakeSalesforceModelCommand extends Command
             return [];
         }
 
-        $available = [];
-        $unavailable = [];
-
-        foreach ($allRelationships as $rel) {
+        // Resolve class names and mark which models exist
+        $options = [];
+        foreach ($allRelationships as $i => $rel) {
             $relatedClassName = SalesforceModelGenerator::resolveClassName($rel['relatedObject']);
             $relatedFilePath = rtrim($outputPath, '/') . "/{$relatedClassName}.php";
+            $allRelationships[$i]['relatedClass'] = "{$namespace}\\{$relatedClassName}";
 
-            if (file_exists($relatedFilePath)) {
-                $rel['relatedClass'] = "{$namespace}\\{$relatedClassName}";
-                $available[] = $rel;
-            } else {
-                $unavailable[] = $rel;
+            $label = "{$rel['type']} {$rel['relatedObject']} (via {$rel['foreignKey']})";
+            if (! file_exists($relatedFilePath)) {
+                $label .= ' — model not yet generated';
             }
-        }
-
-        foreach ($unavailable as $rel) {
-            $this->line("  <fg=gray>{$rel['type']} {$rel['relatedObject']} (via {$rel['foreignKey']}) — model not found, skipping</>");
-        }
-
-        if ($available === []) {
-            $this->info('No relationships with existing models found.');
-            return [];
-        }
-
-        $options = [];
-        foreach ($available as $i => $rel) {
-            $options[$i] = "{$rel['type']} {$rel['relatedObject']} (via {$rel['foreignKey']})";
+            $options[$i] = $label;
         }
 
         $selected = multiselect(
             label: 'Select relationships to include',
             options: $options,
+            hint: 'Models that don\'t exist yet will work once generated',
         );
 
-        return array_map(fn ($i) => $available[$i], $selected);
+        return array_map(fn ($i) => $allRelationships[$i], $selected);
     }
 
     private function writeFile(string $filePath, string $content): ?bool
