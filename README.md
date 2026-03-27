@@ -55,6 +55,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
   - [Aggregate Functions](docs/aggregates.md)
   - [Pagination](docs/pagination.md)
   - [Troubleshooting](docs/troubleshooting.md)
+  - [Migrating from EloquentSalesForce](docs/migration-from-eloquent-salesforce.md)
 - [Testing](#testing)
 - [Credits](#credits)
 - [License](#license)
@@ -173,6 +174,7 @@ For detailed installation and configuration instructions, see:
 
 - **[Configuration Reference](docs/configuration.md)** - All configuration options explained
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+- **[Migrating from EloquentSalesForce](docs/migration-from-eloquent-salesforce.md)** - Upgrade guide from roblesterjr04/EloquentSalesForce
 
 ## Testing
 
