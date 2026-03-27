@@ -211,18 +211,22 @@ class MakeSalesforceModelCommand extends Command
             return [];
         }
 
-        // Resolve class names and mark which models exist
+        // Resolve class names and build selectable options keyed by index
+        $indexedRelationships = [];
         $options = [];
-        foreach ($allRelationships as $i => $rel) {
+        foreach ($allRelationships as $rel) {
             $relatedClassName = SalesforceModelGenerator::resolveClassName($rel['relatedObject']);
             $relatedFilePath = rtrim($outputPath, '/') . "/{$relatedClassName}.php";
-            $allRelationships[$i]['relatedClass'] = "{$namespace}\\{$relatedClassName}";
+            $rel['relatedClass'] = "{$namespace}\\{$relatedClassName}";
 
             $label = "{$rel['type']} {$rel['relatedObject']} (via {$rel['foreignKey']})";
             if (! file_exists($relatedFilePath)) {
                 $label .= ' — model not yet generated';
             }
-            $options[$i] = $label;
+
+            // Use label as both key and value so multiselect return is predictable
+            $options[$label] = $label;
+            $indexedRelationships[$label] = $rel;
         }
 
         $selected = multiselect(
@@ -231,7 +235,7 @@ class MakeSalesforceModelCommand extends Command
             hint: 'Models that don\'t exist yet will work once generated',
         );
 
-        return array_map(fn ($i) => $allRelationships[$i], $selected);
+        return array_map(fn ($label) => $indexedRelationships[$label], $selected);
     }
 
     private function writeFile(string $filePath, string $content): ?bool
