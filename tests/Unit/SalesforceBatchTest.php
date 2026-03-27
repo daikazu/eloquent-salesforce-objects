@@ -3,7 +3,6 @@
 use Daikazu\EloquentSalesforceObjects\Database\SalesforceBatch;
 use Daikazu\EloquentSalesforceObjects\Database\SalesforceBatchResult;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {

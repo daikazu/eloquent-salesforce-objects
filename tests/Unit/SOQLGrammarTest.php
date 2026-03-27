@@ -1,6 +1,9 @@
 <?php
 
+use Daikazu\EloquentSalesforceObjects\Database\SOQLConnection;
+use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -455,8 +458,8 @@ describe('SOQLGrammar — compileLock FOR UPDATE', function () {
 
         $sql = Account::lockForUpdate()->toSql();
 
-        $fromPos     = strpos($sql, 'from Account');
-        $lockPos     = strpos($sql, 'FOR UPDATE');
+        $fromPos = strpos($sql, 'from Account');
+        $lockPos = strpos($sql, 'FOR UPDATE');
 
         expect($fromPos)->not->toBeFalse();
         expect($lockPos)->not->toBeFalse();
@@ -529,10 +532,10 @@ describe('SOQLGrammar — grammarPlural pluralization rules', function () {
         // Verify via grammar directly: wrap in a minimal unit test.
         // grammarPlural is private, so we exercise it via the public checkStringLiteral path.
         // The most reliable surface is to verify the grammar instance method through reflection.
-        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
-            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        $connection = new SOQLConnection(
+            app(SalesforceAdapter::class)
         );
-        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+        $grammar = new SOQLGrammar($connection);
 
         $method = new ReflectionMethod($grammar, 'grammarPlural');
         $method->setAccessible(true);
@@ -542,10 +545,10 @@ describe('SOQLGrammar — grammarPlural pluralization rules', function () {
     });
 
     it('applies the special -try -> -tries rule for words ending exactly in "try"', function () {
-        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
-            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        $connection = new SOQLConnection(
+            app(SalesforceAdapter::class)
         );
-        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+        $grammar = new SOQLGrammar($connection);
 
         $method = new ReflectionMethod($grammar, 'grammarPlural');
         $method->setAccessible(true);
@@ -556,10 +559,10 @@ describe('SOQLGrammar — grammarPlural pluralization rules', function () {
     });
 
     it('does not apply the -try rule when the last three characters are not exactly "try"', function () {
-        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
-            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        $connection = new SOQLConnection(
+            app(SalesforceAdapter::class)
         );
-        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+        $grammar = new SOQLGrammar($connection);
 
         $method = new ReflectionMethod($grammar, 'grammarPlural');
         $method->setAccessible(true);
@@ -572,10 +575,10 @@ describe('SOQLGrammar — grammarPlural pluralization rules', function () {
     });
 
     it('falls through to Str::plural for words not ending in -try', function () {
-        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
-            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        $connection = new SOQLConnection(
+            app(SalesforceAdapter::class)
         );
-        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+        $grammar = new SOQLGrammar($connection);
 
         $method = new ReflectionMethod($grammar, 'grammarPlural');
         $method->setAccessible(true);

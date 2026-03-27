@@ -2,6 +2,7 @@
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\LazyCollection;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -226,7 +227,7 @@ describe('cursor() pagination', function () {
         // Eloquent's cursor() wraps the underlying generator in a LazyCollection
         $cursor = Account::cursor();
 
-        expect($cursor)->toBeInstanceOf(\Illuminate\Support\LazyCollection::class);
+        expect($cursor)->toBeInstanceOf(LazyCollection::class);
 
         // Confirm records are accessible without loading everything into memory at once
         $first = $cursor->first();
@@ -291,7 +292,7 @@ describe('executeQuery() exception handling', function () {
         // they bubble up to executeQuery()'s catch block
         Forrest::shouldReceive('query')
             ->once()
-            ->andThrow(new \Exception('INVALID_FIELD: No such column Name on entity Account'));
+            ->andThrow(new Exception('INVALID_FIELD: No such column Name on entity Account'));
 
         // Suppress exception re-throw; executeQuery() must return []
         config(['eloquent-salesforce-objects.throw_exceptions' => false]);
@@ -311,13 +312,13 @@ describe('executeQuery() exception handling', function () {
 
         Forrest::shouldReceive('query')
             ->once()
-            ->andThrow(new \Exception('MALFORMED_QUERY: unexpected token'));
+            ->andThrow(new Exception('MALFORMED_QUERY: unexpected token'));
 
         config(['eloquent-salesforce-objects.throw_exceptions' => true]);
         config(['eloquent-salesforce-objects.logging_channel' => false]);
 
         expect(fn () => Account::get())
-            ->toThrow(\Exception::class, 'MALFORMED_QUERY');
+            ->toThrow(Exception::class, 'MALFORMED_QUERY');
     });
 
     it('does not call next() after an exception on the initial query', function () {
@@ -327,7 +328,7 @@ describe('executeQuery() exception handling', function () {
 
         Forrest::shouldReceive('query')
             ->once()
-            ->andThrow(new \Exception('QUERY_TIMEOUT'));
+            ->andThrow(new Exception('QUERY_TIMEOUT'));
 
         Forrest::shouldNotReceive('next');
 

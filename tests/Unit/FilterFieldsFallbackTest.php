@@ -59,16 +59,16 @@ describe('filterUpdateableFields fallback when describe throws', function () {
         $this->app->instance(AdapterInterface::class, $mockAdapter);
 
         $account = new Account([
-            'Id'             => '001xx000003DGb2AAG',
-            'Name'           => 'Original Name',
-            'Industry'       => 'Technology',
+            'Id'       => '001xx000003DGb2AAG',
+            'Name'     => 'Original Name',
+            'Industry' => 'Technology',
             // System fields present in the original record
-            'CreatedDate'    => '2024-01-01T00:00:00.000+0000',
-            'CreatedById'    => '005xx000001SvulAAC',
-            'LastModifiedDate'   => '2024-06-01T00:00:00.000+0000',
-            'LastModifiedById'   => '005xx000001SvulAAC',
-            'SystemModstamp' => '2024-06-01T00:00:00.000+0000',
-            'IsDeleted'      => false,
+            'CreatedDate'      => '2024-01-01T00:00:00.000+0000',
+            'CreatedById'      => '005xx000001SvulAAC',
+            'LastModifiedDate' => '2024-06-01T00:00:00.000+0000',
+            'LastModifiedById' => '005xx000001SvulAAC',
+            'SystemModstamp'   => '2024-06-01T00:00:00.000+0000',
+            'IsDeleted'        => false,
         ]);
         // Constructor sets exists=true because Id was provided; sync so everything
         // is clean before we dirty the field we want to update.
@@ -238,8 +238,8 @@ describe('filterCreateableFields fallback when describe throws', function () {
         $this->app->instance(AdapterInterface::class, $mockAdapter);
 
         $account = new Account([
-            'Name'             => 'New Company',
-            'Industry'         => 'Technology',
+            'Name'     => 'New Company',
+            'Industry' => 'Technology',
             // System fields that the caller erroneously passes — must be stripped.
             'CreatedDate'      => '2024-01-01T00:00:00.000+0000',
             'LastModifiedDate' => '2024-01-01T00:00:00.000+0000',

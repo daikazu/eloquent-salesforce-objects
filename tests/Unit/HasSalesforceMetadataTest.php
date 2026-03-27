@@ -153,7 +153,7 @@ describe('HasSalesforceMetadata', function () {
         });
 
         it('returns only the first matching field when names are duplicated', function () {
-            $first  = ['name' => 'Name', 'type' => 'string', 'label' => 'Account Name'];
+            $first = ['name' => 'Name', 'type' => 'string', 'label' => 'Account Name'];
             $second = ['name' => 'Name', 'type' => 'textarea', 'label' => 'Account Name (alt)'];
 
             $this->mockAdapter

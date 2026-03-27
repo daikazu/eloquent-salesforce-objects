@@ -367,7 +367,7 @@ describe('describe', function () {
             ->andReturn($rawResponse);
 
         // Instantiate directly to control the TTL without relying on the singleton
-        $adapter = new Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+        $adapter = new SalesforceAdapter;
         $result = $adapter->describe('Account');
 
         expect($result)->toHaveKey('name', 'Account');
@@ -384,7 +384,7 @@ describe('describe', function () {
             ->with('Account')
             ->andReturn($rawResponse);
 
-        $first  = $this->adapter->describe('Account');
+        $first = $this->adapter->describe('Account');
         $second = $this->adapter->describe('Account');
 
         expect($first)->toBe($second);
@@ -403,7 +403,7 @@ describe('describe', function () {
 
         // Instantiate directly with TTL=0 so caching is disabled
         config(['eloquent-salesforce-objects.metadata_cache_ttl' => 0]);
-        $adapter = new Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+        $adapter = new SalesforceAdapter;
         $adapter->describe('Account');
         $adapter->describe('Account');
     });
@@ -454,7 +454,7 @@ describe('describe', function () {
 
     it('wraps thrown exception in SalesforceException with object name in message', function () {
         config(['eloquent-salesforce-objects.metadata_cache_ttl' => 0]);
-        $adapter = new Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+        $adapter = new SalesforceAdapter;
 
         $original = new RuntimeException('object not found');
         Forrest::shouldReceive('describe')->once()->andThrow($original);
@@ -465,7 +465,7 @@ describe('describe', function () {
 
     it('preserves original exception as previous', function () {
         config(['eloquent-salesforce-objects.metadata_cache_ttl' => 0]);
-        $adapter = new Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+        $adapter = new SalesforceAdapter;
 
         $original = new RuntimeException('object not found');
         Forrest::shouldReceive('describe')->once()->andThrow($original);

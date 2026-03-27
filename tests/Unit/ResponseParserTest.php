@@ -5,7 +5,7 @@ use Daikazu\EloquentSalesforceObjects\Support\ResponseParser;
 describe('normalize', function () {
     it('returns an array unchanged', function () {
         $parser = new ResponseParser;
-        $input  = ['foo' => 'bar', 'baz' => 1];
+        $input = ['foo' => 'bar', 'baz' => 1];
 
         $result = $parser->parseListResponse($input);
 
@@ -14,7 +14,7 @@ describe('normalize', function () {
 
     it('decodes a valid JSON string into an array', function () {
         $parser = new ResponseParser;
-        $json   = json_encode(['key' => 'value', 'count' => 42]);
+        $json = json_encode(['key' => 'value', 'count' => 42]);
 
         $result = $parser->parseListResponse($json);
 
@@ -64,7 +64,7 @@ describe('normalize', function () {
 
 describe('parseListResponse', function () {
     it('passes an array response through unchanged', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = ['version' => '58.0', 'url' => '/services/data/v58.0'];
 
         $result = $parser->parseListResponse($response);
@@ -73,7 +73,7 @@ describe('parseListResponse', function () {
     });
 
     it('decodes and returns a JSON string response', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = json_encode(['version' => '58.0', 'url' => '/services/data/v58.0']);
 
         $result = $parser->parseListResponse($response);
@@ -92,7 +92,7 @@ describe('parseListResponse', function () {
 
 describe('parseRecordResponse', function () {
     it('strips top-level attributes key from a single record', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
             'attributes' => ['type' => 'Account', 'url' => '/services/data/v58.0/sobjects/Account/001xx'],
             'Id'         => '001xx000001',
@@ -106,7 +106,7 @@ describe('parseRecordResponse', function () {
     });
 
     it('returns a record with no attributes key unchanged', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = ['Id' => '001xx000001', 'Name' => 'Acme Corp'];
 
         $result = $parser->parseRecordResponse($response);
@@ -115,7 +115,7 @@ describe('parseRecordResponse', function () {
     });
 
     it('decodes a JSON string before stripping attributes', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = json_encode([
             'attributes' => ['type' => 'Contact'],
             'Id'         => '003xx000001',
@@ -138,7 +138,7 @@ describe('parseRecordResponse', function () {
 
 describe('stripAttributes — nested relationship records', function () {
     it('flattens a sub-query relationship into a plain array of cleaned records', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
             'attributes' => ['type' => 'Account'],
             'Id'         => '001xx000001',
@@ -172,9 +172,9 @@ describe('stripAttributes — nested relationship records', function () {
     });
 
     it('strips attributes recursively from nested relationship records', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
-            'Id'           => '001xx000001',
+            'Id'                   => '001xx000001',
             'OpportunityLineItems' => [
                 'records' => [
                     [
@@ -195,7 +195,7 @@ describe('stripAttributes — nested relationship records', function () {
 
 describe('stripAttributes — nested objects', function () {
     it('recursively strips attributes from a nested object field', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
             'attributes'     => ['type' => 'Account'],
             'Id'             => '001xx000001',
@@ -217,10 +217,10 @@ describe('stripAttributes — nested objects', function () {
     });
 
     it('strips attributes keys found inside a nested object', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
-            'Id'      => '001xx000001',
-            'Owner'   => [
+            'Id'    => '001xx000001',
+            'Owner' => [
                 'attributes' => ['type' => 'User'],
                 'Id'         => '005xx000001',
                 'Name'       => 'Jane Doe',
@@ -234,7 +234,7 @@ describe('stripAttributes — nested objects', function () {
     });
 
     it('preserves empty array values without recursing', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = [
             'Id'         => '001xx000001',
             'EmptyField' => [],
@@ -248,7 +248,7 @@ describe('stripAttributes — nested objects', function () {
 
 describe('parseQueryResponse with JSON string input', function () {
     it('decodes a JSON string and maps records through stripAttributes', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = json_encode([
             'totalSize'      => 2,
             'done'           => true,
@@ -301,7 +301,7 @@ describe('parseQueryResponse with JSON string input', function () {
     });
 
     it('preserves nextRecordsUrl when present in a JSON string response', function () {
-        $parser   = new ResponseParser;
+        $parser = new ResponseParser;
         $response = json_encode([
             'totalSize'      => 500,
             'done'           => false,

@@ -1,7 +1,6 @@
 <?php
 
 use Daikazu\EloquentSalesforceObjects\Database\SalesforceBatchResult;
-use Illuminate\Support\Collection;
 
 describe('get()', function () {
     it('returns the data collection for a successful query', function () {

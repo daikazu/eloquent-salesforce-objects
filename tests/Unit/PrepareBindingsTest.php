@@ -212,7 +212,7 @@ describe('SOQLConnection::prepareBindings() — unit', function () {
     it('does not mutate null entries at any position in the array', function () {
         $connection = makeConnection();
 
-        $result = $connection->prepareBindings([null, "safe", null]);
+        $result = $connection->prepareBindings([null, 'safe', null]);
 
         expect($result[0])->toBeNull();
         expect($result[1])->toBe('safe');

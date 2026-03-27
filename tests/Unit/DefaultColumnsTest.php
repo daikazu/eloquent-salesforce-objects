@@ -1,6 +1,7 @@
 <?php
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
@@ -163,7 +164,7 @@ describe('defaultColumns', function () {
             ]);
 
         // Use the Contact example which has no defaultColumns
-        \Daikazu\EloquentSalesforceObjects\Examples\Contact::get();
+        Contact::get();
     });
 });
 
