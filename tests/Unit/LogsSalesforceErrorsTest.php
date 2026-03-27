@@ -15,7 +15,7 @@ beforeEach(function () {
             $this->logSalesforceError($message, $context, $level);
         }
 
-        public function testHandleSalesforceException(\Throwable $exception, string $operation): void
+        public function testHandleSalesforceException(Throwable $exception, string $operation): void
         {
             $this->handleSalesforceException($exception, $operation);
         }

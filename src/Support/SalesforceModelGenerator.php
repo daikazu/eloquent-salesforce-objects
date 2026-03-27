@@ -21,9 +21,9 @@ class SalesforceModelGenerator
      * Build the casts array from field metadata and the configured cast map.
      * Excludes fields already cast by the parent SalesforceModel.
      *
-     * @param  array  $fields   Field metadata from describe response
+     * @param  array  $fields  Field metadata from describe response
      * @param  array  $castMap  Salesforce type => Laravel cast mapping
-     * @return array  Field name => cast type
+     * @return array Field name => cast type
      */
     public function buildCasts(array $fields, array $castMap): array
     {
@@ -79,7 +79,7 @@ class SalesforceModelGenerator
      * Polymorphic references (multiple referenceTo) are skipped.
      *
      * @param  array  $fields  Field metadata from describe response
-     * @return array  Array of relationship definitions
+     * @return array Array of relationship definitions
      */
     public function extractBelongsToRelationships(array $fields): array
     {
@@ -116,7 +116,7 @@ class SalesforceModelGenerator
      * Skips entries with null relationshipName (internal Salesforce tracking objects).
      *
      * @param  array  $childRelationships  childRelationships from describe response
-     * @return array  Array of relationship definitions
+     * @return array Array of relationship definitions
      */
     public function extractHasManyRelationships(array $childRelationships): array
     {
@@ -153,7 +153,7 @@ class SalesforceModelGenerator
      *     casts: array,
      *     relationships: array,
      * }  $config
-     * @return string  Generated PHP file content
+     * @return string Generated PHP file content
      */
     public function generate(array $config): string
     {

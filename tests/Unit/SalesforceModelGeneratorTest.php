@@ -37,7 +37,7 @@ describe('cast mapping', function () {
         ];
 
         $castMap = config('eloquent-salesforce-objects.model_generation.cast_map');
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $casts = $generator->buildCasts($fields, $castMap);
 
         expect($casts)->toBe([
@@ -59,7 +59,7 @@ describe('cast mapping', function () {
         ];
 
         $castMap = config('eloquent-salesforce-objects.model_generation.cast_map');
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $casts = $generator->buildCasts($fields, $castMap);
 
         expect($casts)->toBe(['CustomDate__c' => 'datetime']);
@@ -72,7 +72,7 @@ describe('cast mapping', function () {
         ];
 
         $castMap = config('eloquent-salesforce-objects.model_generation.cast_map');
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $casts = $generator->buildCasts($fields, $castMap);
 
         expect($casts)->toBe([]);
@@ -83,46 +83,46 @@ describe('relationship extraction', function () {
     it('extracts belongsTo from reference fields', function () {
         $fields = [
             [
-                'name' => 'AccountId',
-                'type' => 'reference',
-                'referenceTo' => ['Account'],
+                'name'             => 'AccountId',
+                'type'             => 'reference',
+                'referenceTo'      => ['Account'],
                 'relationshipName' => 'Account',
-                'createable' => true,
-                'updateable' => true,
+                'createable'       => true,
+                'updateable'       => true,
             ],
             [
-                'name' => 'Name',
-                'type' => 'string',
+                'name'       => 'Name',
+                'type'       => 'string',
                 'createable' => true,
                 'updateable' => true,
             ],
         ];
 
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $relationships = $generator->extractBelongsToRelationships($fields);
 
         expect($relationships)->toHaveCount(1);
         expect($relationships[0])->toBe([
-            'type'         => 'belongsTo',
+            'type'          => 'belongsTo',
             'relatedObject' => 'Account',
-            'foreignKey'   => 'AccountId',
-            'methodName'   => 'account',
+            'foreignKey'    => 'AccountId',
+            'methodName'    => 'account',
         ]);
     });
 
     it('skips polymorphic references', function () {
         $fields = [
             [
-                'name' => 'WhoId',
-                'type' => 'reference',
-                'referenceTo' => ['Contact', 'Lead'],
+                'name'             => 'WhoId',
+                'type'             => 'reference',
+                'referenceTo'      => ['Contact', 'Lead'],
                 'relationshipName' => 'Who',
-                'createable' => true,
-                'updateable' => true,
+                'createable'       => true,
+                'updateable'       => true,
             ],
         ];
 
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $relationships = $generator->extractBelongsToRelationships($fields);
 
         expect($relationships)->toHaveCount(0);
@@ -131,39 +131,39 @@ describe('relationship extraction', function () {
     it('extracts hasMany from childRelationships', function () {
         $childRelationships = [
             [
-                'childSObject' => 'Contact',
-                'field' => 'AccountId',
+                'childSObject'     => 'Contact',
+                'field'            => 'AccountId',
                 'relationshipName' => 'Contacts',
             ],
             [
-                'childSObject' => 'Opportunity',
-                'field' => 'AccountId',
+                'childSObject'     => 'Opportunity',
+                'field'            => 'AccountId',
                 'relationshipName' => 'Opportunities',
             ],
         ];
 
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $relationships = $generator->extractHasManyRelationships($childRelationships);
 
         expect($relationships)->toHaveCount(2);
         expect($relationships[0])->toBe([
-            'type'         => 'hasMany',
+            'type'          => 'hasMany',
             'relatedObject' => 'Contact',
-            'foreignKey'   => 'AccountId',
-            'methodName'   => 'contacts',
+            'foreignKey'    => 'AccountId',
+            'methodName'    => 'contacts',
         ]);
     });
 
     it('skips childRelationships with null relationshipName', function () {
         $childRelationships = [
             [
-                'childSObject' => 'ContactHistory',
-                'field' => 'ContactId',
+                'childSObject'     => 'ContactHistory',
+                'field'            => 'ContactId',
                 'relationshipName' => null,
             ],
         ];
 
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
         $relationships = $generator->extractHasManyRelationships($childRelationships);
 
         expect($relationships)->toHaveCount(0);
@@ -172,7 +172,7 @@ describe('relationship extraction', function () {
 
 describe('generate', function () {
     it('generates a basic model with no custom fields or relationships', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'Account',
@@ -191,7 +191,7 @@ describe('generate', function () {
     });
 
     it('generates model with table property when name differs', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'OpportunityProduct',
@@ -207,7 +207,7 @@ describe('generate', function () {
     });
 
     it('generates model with defaultColumns when fields are specified', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'Account',
@@ -225,7 +225,7 @@ describe('generate', function () {
     });
 
     it('generates model with casts', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'Opportunity',
@@ -243,7 +243,7 @@ describe('generate', function () {
     });
 
     it('generates model with relationships', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'Account',
@@ -276,7 +276,7 @@ describe('generate', function () {
     });
 
     it('generates a fully populated model', function () {
-        $generator = new SalesforceModelGenerator();
+        $generator = new SalesforceModelGenerator;
 
         $output = $generator->generate([
             'className'     => 'OpportunityProduct',

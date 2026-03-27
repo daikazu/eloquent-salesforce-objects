@@ -2,6 +2,7 @@
 
 use Carbon\Carbon;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Daikazu\EloquentSalesforceObjects\Examples\Opportunity;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -375,7 +376,7 @@ describe('timestamp casting', function () {
                 ],
             ]);
 
-        $opportunity = \Daikazu\EloquentSalesforceObjects\Examples\Opportunity::first();
+        $opportunity = Opportunity::first();
 
         // CreatedDate should be a Carbon instance (from parent casts)
         expect($opportunity->CreatedDate)->toBeInstanceOf(Carbon::class);
@@ -416,8 +417,8 @@ describe('timestamp casting', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
 
         $account = new Account([
-            'Id'               => '001xx000003DGb2AAG',
-            'Name'             => 'Test',
+            'Id'                 => '001xx000003DGb2AAG',
+            'Name'               => 'Test',
             'LastReferencedDate' => '2024-01-15T10:30:00.000+0000',
         ]);
 

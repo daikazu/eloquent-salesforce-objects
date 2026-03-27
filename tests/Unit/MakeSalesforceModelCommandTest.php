@@ -1,6 +1,5 @@
 <?php
 
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Support\Facades\File;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
@@ -18,7 +17,7 @@ beforeEach(function () {
             ['name' => 'AnnualRevenue', 'type' => 'currency', 'createable' => true, 'updateable' => true, 'nillable' => true],
             ['name' => 'IsActive', 'type' => 'boolean', 'createable' => true, 'updateable' => true, 'nillable' => false],
             ['name' => 'CreatedDate', 'type' => 'datetime', 'createable' => false, 'updateable' => false, 'nillable' => false],
-            ['name' => 'AccountId', 'type' => 'reference', 'createable' => true, 'updateable' => true, 'nillable' => true,
+            ['name'           => 'AccountId', 'type' => 'reference', 'createable' => true, 'updateable' => true, 'nillable' => true,
                 'referenceTo' => ['Account'], 'relationshipName' => 'Account'],
         ],
         'childRelationships' => [
@@ -48,10 +47,10 @@ describe('make:salesforce-model command', function () {
         Forrest::shouldReceive('describe')->with('Account')->andReturn($this->describeResponse);
 
         $this->artisan('make:salesforce-model', [
-            'object' => 'Account',
-            '--all-fields' => true,
+            'object'             => 'Account',
+            '--all-fields'       => true,
             '--no-relationships' => true,
-            '--force' => true,
+            '--force'            => true,
         ])
             ->expectsQuestion('Class name for the model', 'Account')
             ->assertSuccessful();
@@ -70,10 +69,10 @@ describe('make:salesforce-model command', function () {
         Forrest::shouldReceive('describe')->with('My_Object__c')->andReturn($this->describeResponse);
 
         $this->artisan('make:salesforce-model', [
-            'object' => 'My_Object__c',
-            '--all-fields' => true,
+            'object'             => 'My_Object__c',
+            '--all-fields'       => true,
             '--no-relationships' => true,
-            '--force' => true,
+            '--force'            => true,
         ])
             ->expectsQuestion('Class name for the model', 'MyObject')
             ->assertSuccessful();
@@ -94,8 +93,8 @@ describe('make:salesforce-model command', function () {
         Forrest::shouldReceive('describe')->with('Account')->andReturn($this->describeResponse);
 
         $this->artisan('make:salesforce-model', [
-            'object' => 'Account',
-            '--all-fields' => true,
+            'object'             => 'Account',
+            '--all-fields'       => true,
             '--no-relationships' => true,
         ])
             ->expectsQuestion('Class name for the model', 'Account')

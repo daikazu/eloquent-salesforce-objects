@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects;
 
-use Daikazu\EloquentSalesforceObjects\Commands\EloquentSalesforceObjectsCommand;
 use Daikazu\EloquentSalesforceObjects\Commands\MakeSalesforceModelCommand;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager;
@@ -41,11 +40,11 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
 
     public function registeringPackage(): void
     {
-        $this->app->singleton(AuthenticationManager::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager => new AuthenticationManager);
+        $this->app->singleton(AuthenticationManager::class, fn ($app): AuthenticationManager => new AuthenticationManager);
 
-        $this->app->singleton(ResponseParser::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\ResponseParser => new ResponseParser);
+        $this->app->singleton(ResponseParser::class, fn ($app): ResponseParser => new ResponseParser);
 
-        $this->app->singleton(SalesforceAdapter::class, fn ($app): \Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter => new SalesforceAdapter(
+        $this->app->singleton(SalesforceAdapter::class, fn ($app): SalesforceAdapter => new SalesforceAdapter(
             $app->make(AuthenticationManager::class)
         ));
 

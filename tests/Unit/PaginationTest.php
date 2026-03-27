@@ -1,6 +1,8 @@
 <?php
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Illuminate\Contracts\Pagination\Paginator;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -64,7 +66,7 @@ describe('paginate method', function () {
 
         $paginator = Account::paginate(15);
 
-        expect($paginator)->toBeInstanceOf(\Illuminate\Pagination\LengthAwarePaginator::class);
+        expect($paginator)->toBeInstanceOf(LengthAwarePaginator::class);
         expect($paginator->total())->toBe(150);
         expect($paginator->perPage())->toBe(15);
         expect($paginator->currentPage())->toBe(1);
@@ -342,7 +344,7 @@ describe('simplePaginate method', function () {
 
         $paginator = Account::simplePaginate(15);
 
-        expect($paginator)->toBeInstanceOf(\Illuminate\Contracts\Pagination\Paginator::class);
+        expect($paginator)->toBeInstanceOf(Paginator::class);
         expect($paginator->perPage())->toBe(15);
         expect($paginator->currentPage())->toBe(1);
         expect($paginator->hasMorePages())->toBeTrue(); // Because we got 16 results

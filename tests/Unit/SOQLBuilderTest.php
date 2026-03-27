@@ -1,6 +1,7 @@
 <?php
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
@@ -660,8 +661,8 @@ describe('query chaining', function () {
         $customers = $query->where('Type', 'Customer')->get();
         $partners = $query->where('Type', 'Partner')->get();
 
-        expect($customers)->toBeInstanceOf(\Illuminate\Database\Eloquent\Collection::class);
-        expect($partners)->toBeInstanceOf(\Illuminate\Database\Eloquent\Collection::class);
+        expect($customers)->toBeInstanceOf(Collection::class);
+        expect($partners)->toBeInstanceOf(Collection::class);
     });
 });
 
@@ -836,6 +837,6 @@ describe('getPicklistValues method', function () {
 describe('batch method', function () {
     it('throws exception for not implemented', function () {
         expect(fn () => Account::query()->batch())
-            ->toThrow(\BadMethodCallException::class, 'not yet implemented');
+            ->toThrow(BadMethodCallException::class, 'not yet implemented');
     });
 });

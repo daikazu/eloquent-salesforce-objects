@@ -409,10 +409,10 @@ describe('apexRest method', function () {
 
             Forrest::shouldReceive('authenticate')
                 ->once()
-                ->andThrow(new \Exception('Authentication failed'));
+                ->andThrow(new Exception('Authentication failed'));
 
             expect(fn () => $this->adapter->apexRest('/TestEndpoint'))
-                ->toThrow(\Exception::class);
+                ->toThrow(Exception::class);
         });
     });
 
@@ -421,7 +421,7 @@ describe('apexRest method', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
             Forrest::shouldReceive('custom')
                 ->once()
-                ->andThrow(new \Exception('Salesforce API Error'));
+                ->andThrow(new Exception('Salesforce API Error'));
 
             expect(fn () => $this->adapter->apexRest('/CreateOrder', [
                 'method' => 'POST',
@@ -433,7 +433,7 @@ describe('apexRest method', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
             Forrest::shouldReceive('custom')
                 ->once()
-                ->andThrow(new \Exception('Not found'));
+                ->andThrow(new Exception('Not found'));
 
             try {
                 $this->adapter->apexRest('/NonExistentEndpoint');
@@ -446,7 +446,7 @@ describe('apexRest method', function () {
         it('preserves original exception as previous', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
 
-            $originalException = new \Exception('Original error');
+            $originalException = new Exception('Original error');
             Forrest::shouldReceive('custom')
                 ->once()
                 ->andThrow($originalException);

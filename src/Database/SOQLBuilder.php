@@ -564,5 +564,4 @@ class SOQLBuilder extends Builder
 
         return $this;
     }
-
 }

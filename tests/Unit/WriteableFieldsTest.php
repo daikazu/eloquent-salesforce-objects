@@ -1,6 +1,7 @@
 <?php
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -41,7 +42,7 @@ describe('SalesforceAdapter writeable field methods', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->once()->andReturn($this->describeResponse);
 
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
         $fields = $adapter->getWriteableFields('Account');
 
         expect($fields)->toHaveKeys(['createable', 'updateable']);
@@ -55,7 +56,7 @@ describe('SalesforceAdapter writeable field methods', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->once()->andReturn($this->describeResponse);
 
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
         $fields = $adapter->getCreateableFields('Account');
 
         expect($fields)->toContain('Name', 'Industry', 'RecordTypeId', 'My_Column__c');
@@ -66,7 +67,7 @@ describe('SalesforceAdapter writeable field methods', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->once()->andReturn($this->describeResponse);
 
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
         $fields = $adapter->getUpdateableFields('Account');
 
         expect($fields)->toContain('Name', 'Industry', 'OwnerId');
@@ -77,7 +78,7 @@ describe('SalesforceAdapter writeable field methods', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->once()->andReturn($this->describeResponse);
 
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
         $fields = $adapter->getAllWriteableFields('Account');
 
         expect($fields)->toContain('Name', 'Industry', 'OwnerId', 'RecordTypeId', 'My_Column__c');
@@ -148,10 +149,10 @@ describe('update operations use updateable fields', function () {
         Forrest::shouldReceive('describe')->andReturn($this->describeResponse);
 
         $account = new Account([
-            'Id'            => '001xx000003DGb2AAG',
-            'Name'          => 'Original Name',
-            'RecordTypeId'  => '012000000000001',
-            'My_Column__c'  => 'original',
+            'Id'           => '001xx000003DGb2AAG',
+            'Name'         => 'Original Name',
+            'RecordTypeId' => '012000000000001',
+            'My_Column__c' => 'original',
         ]);
         $account->exists = true;
         $account->syncOriginal();

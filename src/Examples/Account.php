@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Examples;
 
+use Daikazu\EloquentSalesforceObjects\Database\SOQLHasMany;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 
 class Account extends SalesforceModel
@@ -30,12 +31,12 @@ class Account extends SalesforceModel
         'OwnerId',
     ];
 
-    public function contacts(): \Daikazu\EloquentSalesforceObjects\Database\SOQLHasMany
+    public function contacts(): SOQLHasMany
     {
         return $this->hasMany(Contact::class);
     }
 
-    public function opportunities(): \Daikazu\EloquentSalesforceObjects\Database\SOQLHasMany
+    public function opportunities(): SOQLHasMany
     {
         return $this->hasMany(Opportunity::class);
     }

@@ -8,6 +8,7 @@ use Daikazu\EloquentSalesforceObjects\Examples\Scopes\ActiveScope;
 use Daikazu\EloquentSalesforceObjects\Examples\Scopes\VerifiedScope;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Test Account model with various scope types
@@ -35,8 +36,8 @@ class TestAccount extends SalesforceModel
     /**
      * Local scope to filter by specific industry
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeIndustry($query, string $industry)
     {
@@ -46,8 +47,8 @@ class TestAccount extends SalesforceModel
     /**
      * Local scope to filter by annual revenue greater than amount
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeRevenueAbove($query, float $amount)
     {
@@ -57,8 +58,8 @@ class TestAccount extends SalesforceModel
     /**
      * Local scope to filter active accounts (local scope version)
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {
@@ -68,8 +69,8 @@ class TestAccount extends SalesforceModel
     /**
      * Local scope to filter by type
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeOfType($query, string $type)
     {

@@ -3,6 +3,8 @@
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Examples\Opportunity;
+use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
+use Illuminate\Database\Eloquent\Collection;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -142,7 +144,7 @@ describe('hasMany relationship', function () {
         $account = Account::first();
         $opportunities = $account->opportunities;
 
-        expect($opportunities)->toBeInstanceOf(\Illuminate\Database\Eloquent\Collection::class);
+        expect($opportunities)->toBeInstanceOf(Collection::class);
         expect($opportunities)->toHaveCount(0);
     });
 
@@ -546,7 +548,7 @@ describe('relationship foreign key conventions', function () {
     });
 
     it('works with custom object names', function () {
-        $model = new class extends \Daikazu\EloquentSalesforceObjects\Models\SalesforceModel
+        $model = new class extends SalesforceModel
         {
             protected $table = 'CustomObject__c';
         };

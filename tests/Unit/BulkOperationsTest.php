@@ -2,6 +2,8 @@
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
+use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Illuminate\Support\Collection;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -42,7 +44,7 @@ describe('bulk insert', function () {
 
         $results = Account::query()->insert($records);
 
-        expect($results)->toBeInstanceOf(\Illuminate\Support\Collection::class);
+        expect($results)->toBeInstanceOf(Collection::class);
         expect($results)->toHaveCount(3);
         expect($results[0]['success'])->toBeTrue();
     });
@@ -72,7 +74,7 @@ describe('bulk insert', function () {
     it('returns empty collection for empty input', function () {
         $results = Account::query()->insert([]);
 
-        expect($results)->toBeInstanceOf(\Illuminate\Support\Collection::class);
+        expect($results)->toBeInstanceOf(Collection::class);
         expect($results)->toHaveCount(0);
     });
 
@@ -629,7 +631,7 @@ describe('bulk operation size limits', function () {
 
         // Try to create 201 records in a single call to the adapter (not through SOQLBuilder)
         // This should fail because the adapter has a hard limit
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
 
         $records = array_fill(0, 201, ['Name' => 'Company']);
 
@@ -640,7 +642,7 @@ describe('bulk operation size limits', function () {
     it('enforces adapter limit on bulkDelete', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
 
-        $adapter = app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class);
+        $adapter = app(SalesforceAdapter::class);
 
         $ids = array_fill(0, 201, '001xx000001');
 
@@ -663,6 +665,6 @@ describe('bulk operation size limits', function () {
         // Should not throw because builder chunks it
         $results = Account::query()->insert($records);
 
-        expect($results)->toBeInstanceOf(\Illuminate\Support\Collection::class);
+        expect($results)->toBeInstanceOf(Collection::class);
     });
 });
