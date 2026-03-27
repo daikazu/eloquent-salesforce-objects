@@ -14,11 +14,10 @@
 
 A Laravel package that lets you work with Salesforce objects using Eloquent syntax. Built on top of [omniphx/forrest](https://github.com/omniphx/forrest) for authentication and API communication.
 
-Inspired by [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce), but written from the ground up with modern PHP 8.4+, full type safety, and a cleaner architecture. If you're migrating from that package, see the [migration guide](docs/migration-from-eloquent-salesforce.md).
+This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce), but written from the ground up with modern PHP 8.4+, full type safety, and a cleaner architecture. If you're migrating from that package, see the [migration guide](docs/migration-from-eloquent-salesforce.md).
 
 ## Features
 
-- **Model Generator** - `php artisan make:salesforce-model` scaffolds models from live Salesforce metadata
 - **Eloquent-Style Models** - Define Salesforce objects using familiar Laravel model syntax
 - **CRUD Operations** - Create, read, update, and delete Salesforce records
 - **Relationships** - `hasMany`, `belongsTo`, and `hasOne`
@@ -27,7 +26,7 @@ Inspired by [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/
 - **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX
 - **Pagination** - Built-in pagination with Laravel's paginator
 - **Apex REST** - Call custom Apex REST endpoints
-- **Field Mapping** - Automatic conversion between Laravel and Salesforce naming conventions
+- **Model Generator** - `php artisan make:salesforce-model` scaffolds models from live Salesforce metadata
 
 ## Requirements
 

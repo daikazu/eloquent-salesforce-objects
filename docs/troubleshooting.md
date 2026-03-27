@@ -8,7 +8,6 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 - [Query Problems](#query-problems)
 - [Performance Problems](#performance-problems)
 - [Connection Errors](#connection-errors)
-- [Field Mapping Issues](#field-mapping-issues)
 - [General Debugging](#general-debugging)
 
 ## Authentication Issues
@@ -330,38 +329,6 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    $accounts = Account::chunk(100, function ($chunk) {
        // Process chunk
    });
-   ```
-
-## Field Mapping Issues
-
-### Field Mapping Not Working
-
-**Problem:** Field name conversion doesn't work.
-
-**Solutions:**
-
-1. **Enable field mapping:**
-   ```env
-   SALESFORCE_ENABLE_FIELD_MAPPING=true
-   ```
-
-2. **Check naming convention:**
-   ```env
-   SALESFORCE_NAMING_CONVENTION=snake_case
-   ```
-
-3. **Clear config cache:**
-   ```bash
-   php artisan config:clear
-   ```
-
-4. **Define custom mappings:**
-   ```php
-   // config/eloquent-salesforce-objects.php
-   'field_mappings' => [
-       'account_name' => 'Name',
-       'annual_revenue' => 'AnnualRevenue',
-   ],
    ```
 
 ## General Debugging

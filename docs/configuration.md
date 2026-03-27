@@ -21,22 +21,6 @@ Creates `config/eloquent-salesforce-objects.php`.
 | `batch_size` | `25` | Queries per batch request (max 25) |
 | `metadata_cache_ttl` | `86400` | Seconds to cache describe results (default 24h) |
 
-### Field Mapping
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enable_field_mapping` | `false` | Auto-convert between Laravel and Salesforce naming conventions |
-| `field_naming_convention` | `snake_case` | Convention to use: `snake_case`, `camelCase`, or `PascalCase` |
-| `field_mappings` | `[]` | Custom field name mappings (overrides automatic conversion) |
-
-```php
-// Example: custom field mappings
-'field_mappings' => [
-    'annual_revenue' => 'AnnualRevenue',
-    'custom_id' => 'Custom_Id__c',
-],
-```
-
 ### Error Handling
 
 | Key | Default | Description |
@@ -86,10 +70,6 @@ SALESFORCE_PAGE_SIZE=200
 SALESFORCE_BULK_OPERATION_SIZE=200
 SALESFORCE_BATCH_SIZE=25
 SALESFORCE_METADATA_CACHE_TTL=86400
-
-# Field Mapping
-SALESFORCE_ENABLE_FIELD_MAPPING=false
-SALESFORCE_NAMING_CONVENTION=snake_case
 
 # Error Handling
 SALESFORCE_THROW_EXCEPTIONS=true

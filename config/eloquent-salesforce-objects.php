@@ -15,34 +15,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enable Field Mapping
-    |--------------------------------------------------------------------------
-    |
-    | When enabled, automatically converts Salesforce field names to Laravel
-    | naming conventions in responses, and vice versa for create/update operations.
-    |
-    | Example: FirstName → first_name, Custom_Field__c → custom_field
-    |
-    | When disabled, field names are returned exactly as Salesforce provides them.
-    |
-    */
-    'enable_field_mapping' => env('SALESFORCE_ENABLE_FIELD_MAPPING', false),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Field Naming Convention
-    |--------------------------------------------------------------------------
-    |
-    | The naming convention for automatic field mapping between Laravel
-    | attributes and Salesforce fields. Options: snake_case, camelCase, PascalCase
-    |
-    | Only applies when enable_field_mapping is true.
-    |
-    */
-    'field_naming_convention' => env('SALESFORCE_NAMING_CONVENTION', 'snake_case'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Enable Query Log
     |--------------------------------------------------------------------------
     |
@@ -69,19 +41,6 @@ return [
     'throw_exceptions' => env('SALESFORCE_THROW_EXCEPTIONS', env('APP_DEBUG', false)),
     'logging_channel'  => env('SALESFORCE_LOG_CHANNEL', null),
     'log_level'        => env('SALESFORCE_LOG_LEVEL', 'error'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Custom Field Mappings
-    |--------------------------------------------------------------------------
-    |
-    | Define custom mappings between Laravel attribute names and Salesforce
-    | field names for cases where automatic mapping doesn't work.
-    |
-    */
-    'field_mappings' => [
-        // 'laravel_attribute' => 'Salesforce_Field__c',
-    ],
 
     /*
     |--------------------------------------------------------------------------

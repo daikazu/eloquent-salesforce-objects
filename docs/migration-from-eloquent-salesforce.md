@@ -373,13 +373,10 @@ The new config is more explicit and adds several new options:
 ```php
 return [
     'default_page_size'     => 200,
-    'enable_field_mapping'  => false,          // NEW: auto snake_case <-> PascalCase
-    'field_naming_convention' => 'snake_case', // NEW
     'enable_query_log'      => false,          // NEW
     'throw_exceptions'      => env('APP_DEBUG', false), // NEW: control error handling
     'logging_channel'       => null,
     'log_level'             => 'error',        // NEW
-    'field_mappings'        => [],             // NEW: custom field name mappings
     'metadata_cache_ttl'    => 86400,          // NEW: describe cache (24h)
     'no_soft_deletes'       => ['User'],
     'batch_size'            => 25,
@@ -450,7 +447,6 @@ Features available in this package that weren't in the old one:
 |---------|-------------|
 | [Model Generator](model-generator.md) | `php artisan make:salesforce-model` scaffolds models from live metadata |
 | [Batch Queries](batch-queries.md) | Fluent API for executing multiple SOQL queries in one API call |
-| Field Mapping | Automatic conversion between `snake_case` and `PascalCase` field names |
 | Exception Control | Configure whether API errors throw exceptions or return false |
 | Metadata Caching | Describe results cached with configurable TTL |
 | Aggregate Functions | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` support |

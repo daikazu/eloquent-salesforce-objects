@@ -145,12 +145,9 @@ class SalesforceAdapter implements AdapterInterface
         $this->ensureAuthenticated();
 
         try {
-            // Reverse map field names before sending to Salesforce
-            $mappedData = $this->parser->reverseMapFields($data);
-
             $response = Forrest::sobjects($object, [
                 'method' => 'post',
-                'body'   => $mappedData,
+                'body'   => $data,
             ]);
 
             return $this->parser->parseCreateResponse($response);
@@ -168,12 +165,9 @@ class SalesforceAdapter implements AdapterInterface
         $this->ensureAuthenticated();
 
         try {
-            // Reverse map field names before sending to Salesforce
-            $mappedData = $this->parser->reverseMapFields($data);
-
             Forrest::sobjects("{$object}/{$id}", [
                 'method' => 'patch',
-                'body'   => $mappedData,
+                'body'   => $data,
             ]);
 
             return true;
@@ -210,12 +204,9 @@ class SalesforceAdapter implements AdapterInterface
         $this->ensureAuthenticated();
 
         try {
-            // Reverse map field names before sending to Salesforce
-            $mappedData = $this->parser->reverseMapFields($data);
-
             $response = Forrest::sobjects("{$object}/{$externalIdField}/{$externalId}", [
                 'method' => 'patch',
-                'body'   => $mappedData,
+                'body'   => $data,
             ]);
 
             return $this->parser->parseCreateResponse($response);
@@ -250,16 +241,15 @@ class SalesforceAdapter implements AdapterInterface
         }
 
         try {
-            // Map field names for all records
-            $mappedRecords = array_map(
-                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $this->parser->reverseMapFields($record)),
+            $preparedRecords = array_map(
+                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $record),
                 $records
             );
 
             return Forrest::post("{$this->apiVersion}/composite/sobjects", [
                 'body' => [
                     'allOrNone' => $allOrNone,
-                    'records'   => $mappedRecords,
+                    'records'   => $preparedRecords,
                 ],
             ]);
         } catch (Throwable $e) {
@@ -293,16 +283,15 @@ class SalesforceAdapter implements AdapterInterface
         }
 
         try {
-            // Map field names for all records and ensure attributes are set
-            $mappedRecords = array_map(
-                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $this->parser->reverseMapFields($record)),
+            $preparedRecords = array_map(
+                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $record),
                 $records
             );
 
             return Forrest::patch("{$this->apiVersion}/composite/sobjects", [
                 'body' => [
                     'allOrNone' => $allOrNone,
-                    'records'   => $mappedRecords,
+                    'records'   => $preparedRecords,
                 ],
             ]);
         } catch (Throwable $e) {
@@ -637,9 +626,8 @@ class SalesforceAdapter implements AdapterInterface
                 'method' => strtolower($method),
             ];
 
-            // If there's a body, reverse map the field names
             if (isset($options['body']) && is_array($options['body'])) {
-                $requestOptions['body'] = $this->parser->reverseMapFields($options['body']);
+                $requestOptions['body'] = $options['body'];
             }
 
             // If there are parameters (query string params), pass them through

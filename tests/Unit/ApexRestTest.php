@@ -271,22 +271,21 @@ describe('apexRest method', function () {
             expect($response['status'])->toBe('active');
         });
 
-        it('applies field mapping to request body', function () {
+        it('passes request body through to API', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
             Forrest::shouldReceive('custom')
                 ->once()
                 ->with('/CreateRecord', Mockery::on(function ($options) {
-                    // The ResponseParser reverseMapFields should convert snake_case to PascalCase
-                    // This test verifies the body is passed through the parser
-                    return isset($options['body']);
+                    return $options['body']['CustomerName'] === 'John Doe'
+                        && $options['body']['OrderTotal'] === 150.00;
                 }))
                 ->andReturn(['success' => true]);
 
             $response = $this->adapter->apexRest('/CreateRecord', [
                 'method' => 'POST',
                 'body'   => [
-                    'customer_name' => 'John Doe',
-                    'order_total'   => 150.00,
+                    'CustomerName' => 'John Doe',
+                    'OrderTotal'   => 150.00,
                 ],
             ]);
 
