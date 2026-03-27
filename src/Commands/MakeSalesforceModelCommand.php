@@ -80,6 +80,16 @@ class MakeSalesforceModelCommand extends Command
 
         $relationships = $this->selectRelationships($fields, $childRelationships, $namespace, $outputPath);
 
+        // Ensure belongsTo foreign key columns are in $defaultColumns
+        if ($selectedFields !== null && $relationships !== []) {
+            $foreignKeys = SalesforceModelGenerator::getRelationshipForeignKeys($relationships);
+            foreach ($foreignKeys as $fk) {
+                if (! in_array($fk, $selectedFields, true)) {
+                    $selectedFields[] = $fk;
+                }
+            }
+        }
+
         $content = $this->generator->generate([
             'className'     => $className,
             'objectName'    => $objectName,
@@ -218,9 +228,10 @@ class MakeSalesforceModelCommand extends Command
             $relatedClassName = SalesforceModelGenerator::resolveClassName($rel['relatedObject']);
             $relatedFilePath = rtrim($outputPath, '/') . "/{$relatedClassName}.php";
             $rel['relatedClass'] = "{$namespace}\\{$relatedClassName}";
+            $rel['modelExists'] = file_exists($relatedFilePath);
 
             $label = "{$rel['type']} {$rel['relatedObject']} (via {$rel['foreignKey']})";
-            if (! file_exists($relatedFilePath)) {
+            if (! $rel['modelExists']) {
                 $label .= ' — model not yet generated';
             }
 

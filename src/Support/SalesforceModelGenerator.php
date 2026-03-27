@@ -74,6 +74,39 @@ class SalesforceModelGenerator
     }
 
     /**
+     * Convert a Salesforce relationship name to a PHP method name.
+     * Strips __r suffix, converts underscores to camelCase.
+     */
+    public static function resolveMethodName(string $relationshipName): string
+    {
+        // Strip __r suffix for custom relationships
+        $name = preg_replace('/__r$/i', '', $relationshipName);
+
+        // Convert to camelCase (first letter lowercase, underscores removed)
+        return lcfirst(str_replace('_', '', ucwords($name, '_')));
+    }
+
+    /**
+     * Get foreign key column names from selected relationships.
+     * Used to ensure belongsTo foreign keys are included in $defaultColumns.
+     *
+     * @param  array  $relationships  Selected relationship definitions
+     * @return array  Foreign key column names from belongsTo relationships
+     */
+    public static function getRelationshipForeignKeys(array $relationships): array
+    {
+        $keys = [];
+
+        foreach ($relationships as $rel) {
+            if (($rel['type'] ?? '') === 'belongsTo') {
+                $keys[] = $rel['foreignKey'];
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * Extract belongsTo relationships from field metadata.
      * Only includes fields where type is 'reference' and referenceTo has exactly one entry.
      * Polymorphic references (multiple referenceTo) are skipped.
@@ -104,7 +137,7 @@ class SalesforceModelGenerator
                 'type'          => 'belongsTo',
                 'relatedObject' => $referenceTo[0],
                 'foreignKey'    => $fieldName,
-                'methodName'    => lcfirst($relationshipName),
+                'methodName'    => self::resolveMethodName($relationshipName),
             ];
         }
 
@@ -135,7 +168,7 @@ class SalesforceModelGenerator
                 'type'          => 'hasMany',
                 'relatedObject' => $childObject,
                 'foreignKey'    => $field,
-                'methodName'    => lcfirst($relationshipName),
+                'methodName'    => self::resolveMethodName($relationshipName),
             ];
         }
 
@@ -260,13 +293,24 @@ class SalesforceModelGenerator
             $type = $rel['type'];
             $class = class_basename($rel['relatedClass']);
             $foreignKey = $rel['foreignKey'];
+            $modelExists = $rel['modelExists'] ?? true;
 
-            $methods[] = <<<PHP
-                public function {$method}()
-                {
-                    return \$this->{$type}({$class}::class, '{$foreignKey}');
-                }
-            PHP;
+            if ($modelExists) {
+                $methods[] = <<<PHP
+                    public function {$method}()
+                    {
+                        return \$this->{$type}({$class}::class, '{$foreignKey}');
+                    }
+                PHP;
+            } else {
+                $methods[] = <<<PHP
+                    // TODO: Generate {$class} model — php artisan make:salesforce-model {$rel['relatedObject']}
+                    public function {$method}()
+                    {
+                        return \$this->{$type}({$class}::class, '{$foreignKey}');
+                    }
+                PHP;
+            }
         }
 
         return implode("\n\n", $methods) . "\n";
