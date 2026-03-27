@@ -85,7 +85,7 @@ class ResponseParser
     protected function mapRecords(array $records): array
     {
         return array_map(
-            fn ($record): array => $this->stripAttributes($record),
+            $this->stripAttributes(...),
             $records
         );
     }
@@ -105,7 +105,7 @@ class ResponseParser
             // Handle nested relationship queries
             if (is_array($value) && isset($value['records'])) {
                 $cleaned[$key] = array_map(
-                    fn ($record): array => $this->stripAttributes($record),
+                    $this->stripAttributes(...),
                     $value['records']
                 );
 

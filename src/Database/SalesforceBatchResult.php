@@ -8,12 +8,11 @@ use Illuminate\Support\Collection;
 
 class SalesforceBatchResult
 {
-    /** @var array<string, array{success: bool, error: ?array, data: ?Collection}> */
-    private array $results;
-
-    public function __construct(array $results)
+    public function __construct(
+        /** @var array<string, array{success: bool, error: ?array, data: ?Collection}> */
+        private array $results
+    )
     {
-        $this->results = $results;
     }
 
     /**
@@ -70,13 +69,7 @@ class SalesforceBatchResult
      */
     public function allSuccessful(): bool
     {
-        foreach ($this->results as $result) {
-            if (! $result['success']) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($this->results, fn($result) => $result['success']);
     }
 
     /**

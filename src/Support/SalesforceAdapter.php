@@ -27,11 +27,10 @@ class SalesforceAdapter implements AdapterInterface
     protected array $noSoftDeletes;
 
     public function __construct(
-        protected ?AuthenticationManager $authManager = null,
+        protected ?AuthenticationManager $authManager = new AuthenticationManager,
         private readonly Collection $queryHistory = new Collection,
     ) {
         $this->parser = new ResponseParser;
-        $this->authManager = $authManager ?? new AuthenticationManager;
 
         // Cache config values for performance
         $this->metadataCacheTtl = config('eloquent-salesforce-objects.metadata_cache_ttl', 86400);
@@ -385,7 +384,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseMetadataResponse($response);
         } catch (Throwable $e) {
-            $message = $objectName !== null && $objectName !== '' && $objectName !== '0' ? "Describe failed for {$objectName}: " : 'Describe failed: ';
+            $message = in_array($objectName, [null, '', '0'], true) ? 'Describe failed: ' : "Describe failed for {$objectName}: ";
             throw new SalesforceException($message . $e->getMessage(), 0, $e);
         }
     }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Daikazu\EloquentSalesforceObjects\Examples;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;

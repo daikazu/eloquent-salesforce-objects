@@ -99,7 +99,7 @@ class MakeSalesforceModelCommand extends Command
             'relationships' => $relationships,
         ]);
 
-        $filePath = rtrim($outputPath, '/') . "/{$className}.php";
+        $filePath = rtrim((string) $outputPath, '/') . "/{$className}.php";
 
         $written = $this->writeFile($filePath, $content);
 
@@ -143,7 +143,7 @@ class MakeSalesforceModelCommand extends Command
 
         return search(
             label: 'Search for a Salesforce object',
-            options: fn (string $value) => array_values(array_filter(
+            options: fn (string $value): array => array_values(array_filter(
                 $objects,
                 fn (string $name): bool => str_contains(strtolower($name), strtolower($value)),
             )),
@@ -176,8 +176,10 @@ class MakeSalesforceModelCommand extends Command
             $name = $field['name'] ?? null;
             $nillable = $field['nillable'] ?? true;
             $createable = $field['createable'] ?? false;
-
-            if (! $name || $name === 'Id') {
+            if (! $name) {
+                continue;
+            }
+            if ($name === 'Id') {
                 continue;
             }
 
@@ -246,7 +248,7 @@ class MakeSalesforceModelCommand extends Command
             hint: 'Models that don\'t exist yet will work once generated',
         );
 
-        return array_map(fn ($label) => $indexedRelationships[$label], $selected);
+        return array_map(fn (int|string $label) => $indexedRelationships[$label], $selected);
     }
 
     private function writeFile(string $filePath, string $content): ?bool

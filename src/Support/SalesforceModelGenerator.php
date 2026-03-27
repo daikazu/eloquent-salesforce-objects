@@ -32,8 +32,10 @@ class SalesforceModelGenerator
         foreach ($fields as $field) {
             $name = $field['name'] ?? null;
             $type = $field['type'] ?? null;
-
-            if (! $name || ! $type) {
+            if (! $name) {
+                continue;
+            }
+            if (! $type) {
                 continue;
             }
 
@@ -61,7 +63,7 @@ class SalesforceModelGenerator
         $name = preg_replace('/__c$/i', '', $objectName);
 
         // Convert underscores to PascalCase
-        return str_replace('_', '', ucwords($name, '_'));
+        return str_replace('_', '', ucwords((string) $name, '_'));
     }
 
     /**
@@ -83,7 +85,7 @@ class SalesforceModelGenerator
         $name = preg_replace('/__r$/i', '', $relationshipName);
 
         // Convert to camelCase (first letter lowercase, underscores removed)
-        return lcfirst(str_replace('_', '', ucwords($name, '_')));
+        return lcfirst(str_replace('_', '', ucwords((string) $name, '_')));
     }
 
     /**
@@ -123,8 +125,13 @@ class SalesforceModelGenerator
             $referenceTo = $field['referenceTo'] ?? [];
             $relationshipName = $field['relationshipName'] ?? null;
             $fieldName = $field['name'] ?? null;
-
-            if ($type !== 'reference' || ! $fieldName || ! $relationshipName) {
+            if ($type !== 'reference') {
+                continue;
+            }
+            if (! $fieldName) {
+                continue;
+            }
+            if (! $relationshipName) {
                 continue;
             }
 
@@ -159,8 +166,13 @@ class SalesforceModelGenerator
             $childObject = $child['childSObject'] ?? null;
             $field = $child['field'] ?? null;
             $relationshipName = $child['relationshipName'] ?? null;
-
-            if (! $childObject || ! $field || ! $relationshipName) {
+            if (! $childObject) {
+                continue;
+            }
+            if (! $field) {
+                continue;
+            }
+            if (! $relationshipName) {
                 continue;
             }
 

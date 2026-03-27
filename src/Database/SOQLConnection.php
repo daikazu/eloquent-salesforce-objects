@@ -46,7 +46,7 @@ class SOQLConnection extends Connection
      */
     public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): array
     {
-        return $this->run($query, $bindings, function ($query, $bindings): array {
+        return $this->run($query, $bindings, function (string $query, array $bindings): array {
             $statement = $this->prepare($query, $bindings);
             return $this->executeQuery($statement);
         });
@@ -126,7 +126,7 @@ class SOQLConnection extends Connection
     public function cursor($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): Generator
     {
 
-        $statement = $this->run($query, $bindings, function ($query, $bindings): array {
+        $statement = $this->run($query, $bindings, function (string $query, array $bindings): array {
 
             if ($this->pretending()) {
                 return [];
