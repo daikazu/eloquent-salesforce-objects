@@ -536,9 +536,9 @@ describe('relationship foreign key conventions', function () {
     it('uses Salesforce PascalCase naming convention', function () {
         $account = new Account(['Id' => '001xx000003DGb2AAG']);
 
-        // Test the getSalesforceForeignKey method
+        // Test the getForeignKey method
         $reflection = new ReflectionClass($account);
-        $method = $reflection->getMethod('getSalesforceForeignKey');
+        $method = $reflection->getMethod('getForeignKey');
         $method->setAccessible(true);
 
         $foreignKey = $method->invoke($account);
@@ -554,7 +554,7 @@ describe('relationship foreign key conventions', function () {
         };
 
         $reflection = new ReflectionClass($model);
-        $method = $reflection->getMethod('getSalesforceForeignKey');
+        $method = $reflection->getMethod('getForeignKey');
         $method->setAccessible(true);
 
         $foreignKey = $method->invoke($model);

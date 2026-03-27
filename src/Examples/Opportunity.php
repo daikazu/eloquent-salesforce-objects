@@ -25,7 +25,7 @@ class Opportunity extends SalesforceModel
         ]);
     }
 
-    public function lineItems()
+    public function lineItems(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ProductLineItem::class, 'Opportunity__c', 'Id');
     }

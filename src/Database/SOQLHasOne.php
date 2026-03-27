@@ -4,31 +4,37 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
-class SOQLHasOne extends SOQLHasOneOrMany
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+/**
+ * @template TRelatedModel of Model
+ * @template TDeclaringModel of Model
+ *
+ * @extends HasOne<TRelatedModel, TDeclaringModel>
+ */
+class SOQLHasOne extends HasOne
 {
     /**
-     * Get the results of the relationship.
+     * Set the base constraints on the relation query.
+     *
+     * SOQL does not support whereNotNull, so we omit it.
      */
-    public function getResults(): mixed
+    public function addConstraints(): void
     {
-        if (is_null($this->getParentKey())) {
-            return $this->getDefaultFor($this->parent);
+        if (static::$constraints) {
+            $this->query->where($this->foreignKey, '=', $this->getParentKey());
         }
-
-        return $this->query->first() ?: $this->getDefaultFor($this->parent);
     }
 
     /**
-     * Initialize the relation on a set of models.
-     *
-     * @param  string  $relation
+     * Set the constraints for an eager load of the relation.
      */
-    public function initRelation(array $models, $relation): array
+    public function addEagerConstraints(array $models): void
     {
-        foreach ($models as $model) {
-            $model->setRelation($relation, $this->getDefaultFor($model));
-        }
-
-        return $models;
+        $this->query->whereIn(
+            $this->foreignKey,
+            $this->getKeys($models, $this->localKey)
+        );
     }
 }

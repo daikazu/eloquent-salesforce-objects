@@ -4,39 +4,37 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SOQLHasMany extends SOQLHasOneOrMany
+/**
+ * @template TRelatedModel of Model
+ * @template TDeclaringModel of Model
+ *
+ * @extends HasMany<TRelatedModel, TDeclaringModel>
+ */
+class SOQLHasMany extends HasMany
 {
     /**
-     * Get the results of the relationship.
-     */
-    public function getResults(): mixed
-    {
-        return is_null($this->getParentKey())
-            ? $this->related->newCollection()
-            : $this->query->get();
-    }
-
-    /**
-     * Initialize the relation on a set of models.
+     * Set the base constraints on the relation query.
      *
-     * @param  string  $relation
+     * SOQL does not support whereNotNull, so we omit it.
      */
-    public function initRelation(array $models, $relation): array
+    public function addConstraints(): void
     {
-        foreach ($models as $model) {
-            $model->setRelation($relation, $this->related->newCollection());
+        if (static::$constraints) {
+            $this->query->where($this->foreignKey, '=', $this->getParentKey());
         }
-
-        return $models;
     }
 
     /**
-     * Match the eagerly loaded results to their parents.
+     * Set the constraints for an eager load of the relation.
      */
-    public function match(array $models, EloquentCollection $results, $relation): array
+    public function addEagerConstraints(array $models): void
     {
-        return $this->matchMany($models, $results, $relation);
+        $this->query->whereIn(
+            $this->foreignKey,
+            $this->getKeys($models, $this->localKey)
+        );
     }
 }

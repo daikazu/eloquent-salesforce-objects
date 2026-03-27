@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use BadMethodCallException;
+use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -22,14 +23,17 @@ class SOQLBuilder extends Builder
     protected bool $throwExceptions;
     protected int $bulkOperationSize;
     protected bool $shouldIgnoreDefaults = false;
+    private SOQLGrammar $soqlGrammar;
 
     public function __construct(
         private readonly SalesforceAdapter $adapter,
         QueryBuilder $query
     ) {
-        $query->connection = new SOQLConnection($this->adapter);
-        $query->grammar = new SOQLGrammar($query->connection);
-        $query->connection->setGrammar($query->grammar);
+        $connection = new SOQLConnection($this->adapter);
+        $this->soqlGrammar = new SOQLGrammar($connection);
+        $query->connection = $connection;
+        $query->grammar = $this->soqlGrammar;
+        $connection->setGrammar($this->soqlGrammar);
 
         parent::__construct($query);
 
@@ -48,7 +52,9 @@ class SOQLBuilder extends Builder
     {
         $this->model = $model;
 
-        $this->query->grammar->setModel($model);
+        if ($model instanceof SalesforceModel) {
+            $this->soqlGrammar->setModel($model);
+        }
 
         $this->query->from($model->getTable());
 
@@ -84,7 +90,7 @@ class SOQLBuilder extends Builder
     public function getModels($columns = ['*']): array
     {
         // Check if we should use default columns
-        $defaultColumns = $this->model->getDefaultColumns();
+        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
         $useDefaults = $defaultColumns !== null && in_array('*', $columns) && ! $this->shouldIgnoreDefaults;
 
         if ($useDefaults) {
@@ -123,7 +129,7 @@ class SOQLBuilder extends Builder
     public function cursor()
     {
         // Use defaultColumns if set and no explicit columns specified
-        $defaultColumns = $this->model->getDefaultColumns();
+        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
         $shouldUseDefaults = $defaultColumns !== null &&
                            (! $this->query->columns || in_array('*', $this->query->columns)) &&
                            ! $this->shouldIgnoreDefaults;
@@ -354,23 +360,25 @@ class SOQLBuilder extends Builder
      */
     public function withTrashed(): static
     {
-        $this->query->connection = new SOQLConnection($this->adapter, true);
-        $this->query->connection->setGrammar($this->query->grammar);
+        $connection = new SOQLConnection($this->adapter, true);
+        $connection->setGrammar($this->soqlGrammar);
+        $this->query->connection = $connection;
 
         return $this;
     }
 
     /**
      * Query only soft deleted (trashed) records
-     *
-     * @return $this
      */
-    public function onlyTrashed()
+    public function onlyTrashed(): static
     {
-        $this->query->connection = new SOQLConnection($this->adapter, true);
-        $this->query->connection->setGrammar($this->query->grammar);
+        $connection = new SOQLConnection($this->adapter, true);
+        $connection->setGrammar($this->soqlGrammar);
+        $this->query->connection = $connection;
 
-        return $this->where('IsDeleted', true);
+        $this->where('IsDeleted', true);
+
+        return $this;
     }
 
     /**
@@ -512,19 +520,8 @@ class SOQLBuilder extends Builder
             return null;
         }
 
-        $result = $results[0];
-
-        // Salesforce returns records as arrays after parsing
-        if (is_array($result) && isset($result['aggregate'])) {
-            return $result['aggregate'];
-        }
-
-        // Fallback for object format (shouldn't happen with current implementation)
-        if (is_object($result) && property_exists($result, 'aggregate')) {
-            return $result->aggregate;
-        }
-
-        return null;
+        // SOQLConnection returns arrays, but use data_get for type safety
+        return data_get($results[0], 'aggregate');
     }
 
     /**

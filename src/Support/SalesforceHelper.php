@@ -12,8 +12,6 @@ class SalesforceHelper
      * Salesforce IDs can be either 15 or 18 characters long.
      * 15-character IDs are case-sensitive.
      * 18-character IDs include a checksum and are case-insensitive.
-     *
-     * @param  mixed  $id
      */
     public static function isValidId(?string $id): bool
     {

@@ -13,6 +13,7 @@ use Daikazu\EloquentSalesforceObjects\Models\Concerns\HasSalesforceMetadata;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\SavesSalesforceRecords;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
@@ -130,58 +131,51 @@ class SalesforceModel extends Model
     }
 
     /**
-     * Define a one-to-many relationship using SOQL.
+     * Instantiate a new HasMany relationship using SOQL.
      *
-     * @param  string  $related
-     * @param  string|null  $foreignKey
-     * @param  string|null  $localKey
+     * @template TRelatedModel of \Illuminate\Database\Eloquent\Model
+     * @template TDeclaringModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
+     * @param  TDeclaringModel  $parent
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<TRelatedModel, TDeclaringModel>
      */
-    public function hasMany($related, $foreignKey = null, $localKey = null): SOQLHasMany
+    protected function newHasMany(Builder $query, Model $parent, $foreignKey, $localKey)
     {
-        $instance = $this->newRelatedInstance($related);
-
-        $foreignKey = $foreignKey ?: $this->getSalesforceForeignKey();
-
-        $localKey = $localKey ?: $this->getKeyName();
-
-        return new SOQLHasMany(
-            $instance->newQuery(),
-            $this,
-            $foreignKey,
-            $localKey
-        );
+        return new SOQLHasMany($query, $parent, $foreignKey, $localKey);
     }
 
     /**
-     * Define a one-to-one relationship using SOQL.
+     * Instantiate a new HasOne relationship using SOQL.
      *
-     * @param  string  $related
-     * @param  string|null  $foreignKey
-     * @param  string|null  $localKey
+     * @template TRelatedModel of \Illuminate\Database\Eloquent\Model
+     * @template TDeclaringModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
+     * @param  TDeclaringModel  $parent
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<TRelatedModel, TDeclaringModel>
      */
-    public function hasOne($related, $foreignKey = null, $localKey = null): SOQLHasOne
+    protected function newHasOne(Builder $query, Model $parent, $foreignKey, $localKey)
     {
-        $instance = $this->newRelatedInstance($related);
-
-        $foreignKey = $foreignKey ?: $this->getSalesforceForeignKey();
-
-        $localKey = $localKey ?: $this->getKeyName();
-
-        return new SOQLHasOne(
-            $instance->newQuery(),
-            $this,
-            $foreignKey,
-            $localKey
-        );
+        return new SOQLHasOne($query, $parent, $foreignKey, $localKey);
     }
 
     /**
      * Get the default foreign key name for Salesforce relationships.
      * Salesforce uses PascalCase format: AccountId, OwnerId, etc.
      */
-    protected function getSalesforceForeignKey(): string
+    public function getForeignKey(): string
     {
         return $this->getTable() . 'Id';
+    }
+
+    /**
+     * Qualify a column name for SOQL.
+     * SOQL does not use table-qualified column names, so return unqualified.
+     */
+    public function qualifyColumn($column): string
+    {
+        return $column;
     }
 
     /**

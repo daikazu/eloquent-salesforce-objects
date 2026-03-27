@@ -9,7 +9,7 @@ use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
-class SalesforceBatch
+final class SalesforceBatch
 {
     /** @var array<string, array{type: string, query: string, model: ?string}> */
     private array $queries = [];
@@ -110,9 +110,9 @@ class SalesforceBatch
 
                         if ($entry['model']) {
                             $modelClass = $entry['model'];
-                            $data = collect($records)->map(fn (array $item) => new $modelClass($item));
+                            $data = collect($records)->map(fn (array $item): object => new $modelClass($item));
                         } else {
-                            $data = collect($records)->map(fn (array $item) => (object) $item);
+                            $data = collect($records)->map(fn (array $item): \stdClass => (object) $item);
                         }
 
                         $results[$name] = [

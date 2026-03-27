@@ -108,6 +108,22 @@ interface AdapterInterface
     public function bulkDelete(string $object, array $ids, bool $allOrNone = false): array;
 
     /**
+     * Get the list of updateable field names for a Salesforce object
+     *
+     * @param  string|object  $object  Salesforce object name or model
+     * @return array<int, string>
+     */
+    public function getUpdateableFields(string | object $object): array;
+
+    /**
+     * Get the list of createable field names for a Salesforce object
+     *
+     * @param  string|object  $object  Salesforce object name or model
+     * @return array<int, string>
+     */
+    public function getCreateableFields(string | object $object): array;
+
+    /**
      * Access the underlying Forrest instance for operations not covered by this adapter
      */
     public function forrest(): mixed;
