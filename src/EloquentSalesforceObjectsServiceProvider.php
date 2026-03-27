@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects;
 
 use Daikazu\EloquentSalesforceObjects\Commands\MakeSalesforceModelCommand;
+use Daikazu\EloquentSalesforceObjects\Commands\SalesforceTestConnectionCommand;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager;
 use Daikazu\EloquentSalesforceObjects\Support\ResponseParser;
@@ -26,6 +27,7 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasCommands([
                 MakeSalesforceModelCommand::class,
+                SalesforceTestConnectionCommand::class,
             ]);
     }
 
