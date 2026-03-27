@@ -58,7 +58,7 @@ class SOQLBuilder extends Builder
     /**
      * Batch operations are handled by SalesforceBatch.
      *
-     * @see \Daikazu\EloquentSalesforceObjects\Database\SalesforceBatch
+     * @see SalesforceBatch
      */
     public function batch($tag = null): never
     {

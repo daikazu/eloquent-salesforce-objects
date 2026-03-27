@@ -7,7 +7,6 @@ namespace Daikazu\EloquentSalesforceObjects\Database;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use Throwable;
 
 class SalesforceBatch
@@ -42,7 +41,7 @@ class SalesforceBatch
      * @param  string  $name  Unique name to retrieve results by
      * @param  Builder|SOQLBuilder|string  $query  Eloquent builder or raw SOQL string
      */
-    public function add(string $name, Builder|SOQLBuilder|string $query): static
+    public function add(string $name, Builder | SOQLBuilder | string $query): static
     {
         if (is_string($query)) {
             $this->queries[$name] = [

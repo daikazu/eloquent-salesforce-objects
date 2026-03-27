@@ -36,7 +36,7 @@ class SalesforceTestConnectionCommand extends Command
         try {
             $global = $adapter->describeGlobal();
             $objectCount = count($global['sobjects'] ?? []);
-            $this->line("  API version: " . config('forrest.version', 'default'));
+            $this->line('  API version: ' . config('forrest.version', 'default'));
             $this->line("  Objects available: {$objectCount}");
         } catch (Throwable $e) {
             $this->error("API call failed: {$e->getMessage()}");
