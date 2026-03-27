@@ -15,6 +15,8 @@ use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
 
@@ -136,9 +138,9 @@ class SalesforceModel extends Model
      * @template TRelatedModel of \Illuminate\Database\Eloquent\Model
      * @template TDeclaringModel of \Illuminate\Database\Eloquent\Model
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
+     * @param  Builder<TRelatedModel>  $query
      * @param  TDeclaringModel  $parent
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<TRelatedModel, TDeclaringModel>
+     * @return HasMany<TRelatedModel, TDeclaringModel>
      */
     protected function newHasMany(Builder $query, Model $parent, $foreignKey, $localKey)
     {
@@ -151,9 +153,9 @@ class SalesforceModel extends Model
      * @template TRelatedModel of \Illuminate\Database\Eloquent\Model
      * @template TDeclaringModel of \Illuminate\Database\Eloquent\Model
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
+     * @param  Builder<TRelatedModel>  $query
      * @param  TDeclaringModel  $parent
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<TRelatedModel, TDeclaringModel>
+     * @return HasOne<TRelatedModel, TDeclaringModel>
      */
     protected function newHasOne(Builder $query, Model $parent, $foreignKey, $localKey)
     {

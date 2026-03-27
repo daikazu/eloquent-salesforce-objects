@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Examples;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Opportunity extends SalesforceModel
 {
@@ -25,7 +26,7 @@ class Opportunity extends SalesforceModel
         ]);
     }
 
-    public function lineItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function lineItems(): HasMany
     {
         return $this->hasMany(ProductLineItem::class, 'Opportunity__c', 'Id');
     }

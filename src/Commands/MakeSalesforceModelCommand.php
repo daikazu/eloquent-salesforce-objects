@@ -248,7 +248,7 @@ class MakeSalesforceModelCommand extends Command
             hint: 'Models that don\'t exist yet will work once generated',
         );
 
-        return array_map(fn (int|string $label) => $indexedRelationships[$label], $selected);
+        return array_map(fn (int | string $label) => $indexedRelationships[$label], $selected);
     }
 
     private function writeFile(string $filePath, string $content): ?bool

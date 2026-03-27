@@ -7,6 +7,7 @@ namespace Daikazu\EloquentSalesforceObjects\Database;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Database\Eloquent\Builder;
+use stdClass;
 use Throwable;
 
 final class SalesforceBatch
@@ -32,7 +33,7 @@ final class SalesforceBatch
      */
     public static function new(): static
     {
-        return new static;
+        return new self;
     }
 
     /**
@@ -112,7 +113,7 @@ final class SalesforceBatch
                             $modelClass = $entry['model'];
                             $data = collect($records)->map(fn (array $item): object => new $modelClass($item));
                         } else {
-                            $data = collect($records)->map(fn (array $item): \stdClass => (object) $item);
+                            $data = collect($records)->map(fn (array $item): stdClass => (object) $item);
                         }
 
                         $results[$name] = [

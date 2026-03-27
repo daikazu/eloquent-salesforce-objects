@@ -11,9 +11,7 @@ class SalesforceBatchResult
     public function __construct(
         /** @var array<string, array{success: bool, error: ?array, data: ?Collection}> */
         private array $results
-    )
-    {
-    }
+    ) {}
 
     /**
      * Get the results for a named query.
@@ -69,7 +67,7 @@ class SalesforceBatchResult
      */
     public function allSuccessful(): bool
     {
-        return array_all($this->results, fn($result) => $result['success']);
+        return array_all($this->results, fn ($result) => $result['success']);
     }
 
     /**
