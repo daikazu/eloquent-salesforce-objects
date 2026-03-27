@@ -44,6 +44,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
 - [Installation & Configuration](#installation--configuration)
 - [Documentation](#documentation)
   - [Quickstart Guide](docs/quickstart.md)
+  - [Model Generator](docs/model-generator.md)
   - [Models](docs/models.md)
   - [Querying Data](docs/querying.md)
   - [CRUD Operations](docs/crud.md)
@@ -118,81 +119,23 @@ Check out the [Quickstart Guide](docs/quickstart.md) for detailed examples and s
 
 ## Model Generator
 
-Quickly scaffold Salesforce models from live metadata using the artisan command:
+Scaffold Salesforce models from live metadata with a single command:
 
 ```bash
 php artisan make:salesforce-model
 ```
 
-The command connects to your Salesforce org, fetches object metadata, and generates a fully configured model class with fields, casts, and relationships.
-
-### Interactive Flow
-
-When run without arguments, the command walks you through an interactive setup:
-
-1. **Object selection** - Search and select from available Salesforce objects
-2. **Class name** - Auto-suggests a clean PascalCase name (e.g., `Opportunity_Product__c` becomes `OpportunityProduct`)
-3. **Field selection** - Choose all fields or pick specific ones (required fields are always included)
-4. **Relationships** - Select from detected `belongsTo` and `hasMany` relationships
-
-### Options
+The command connects to your Salesforce org, fetches object metadata, and generates a fully configured model with fields, casts, and relationships through an interactive flow.
 
 ```bash
 # Generate a specific object
 php artisan make:salesforce-model Account
 
-# Skip field selection (use all fields)
-php artisan make:salesforce-model Account --all-fields
-
-# Skip relationship detection
-php artisan make:salesforce-model Account --no-relationships
-
-# Overwrite existing model without prompting
-php artisan make:salesforce-model Account --force
-
-# Custom output directory
-php artisan make:salesforce-model Account --path=app/Models/CRM
+# Quick generation with all fields, no prompts
+php artisan make:salesforce-model Account --all-fields --no-relationships --force
 ```
 
-### What Gets Generated
-
-The generated model includes:
-
-- `$table` property (only when the class name differs from the Salesforce API name)
-- `$defaultColumns` array (when specific fields are selected)
-- `casts()` method with automatic type mapping (datetime, boolean, float, etc.)
-- Relationship methods (`belongsTo`, `hasMany`) with correct foreign keys
-- TODO comments for relationships where the related model hasn't been generated yet
-
-### Configuration
-
-Configure defaults in `config/eloquent-salesforce-objects.php`:
-
-```php
-'model_generation' => [
-    'path'      => app_path('Models/Salesforce'),
-    'namespace' => 'App\\Models\\Salesforce',
-    'cast_map'  => [
-        'datetime' => 'datetime',
-        'date'     => 'date',
-        'boolean'  => 'boolean',
-        'double'   => 'float',
-        'currency' => 'float',
-        'percent'  => 'float',
-        'int'      => 'integer',
-    ],
-],
-```
-
-### Customizing the Stub
-
-Publish the stub template to customize the generated model format:
-
-```bash
-php artisan vendor:publish --tag=salesforce-stubs
-```
-
-This copies the template to `stubs/salesforce-model.stub` where you can modify it.
+See the [Model Generator documentation](docs/model-generator.md) for full details on options, configuration, and customization.
 
 ## Installation & Configuration
 
@@ -212,6 +155,7 @@ For detailed installation and configuration instructions, see:
 
 ### Core Concepts
 
+- **[Model Generator](docs/model-generator.md)** - Scaffold models from live Salesforce metadata
 - **[Models](docs/models.md)** - Creating and configuring Salesforce models
 - **[Querying Data](docs/querying.md)** - Building SOQL queries with the query builder
 - **[CRUD Operations](docs/crud.md)** - Creating, reading, updating, and deleting records
