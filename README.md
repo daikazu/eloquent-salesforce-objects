@@ -10,8 +10,6 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/daikazu/eloquent-salesforce-objects/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/daikazu/eloquent-salesforce-objects/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/daikazu/eloquent-salesforce-objects.svg?style=flat-square)](https://packagist.org/packages/daikazu/eloquent-salesforce-objects)
 
-> **This package is under active development.** The API may change and there may be undiscovered bugs. Test thoroughly before using in production.
-
 A Laravel package that lets you work with Salesforce objects using Eloquent syntax. Built on top of [omniphx/forrest](https://github.com/omniphx/forrest) for authentication and API communication.
 
 This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce), but written from the ground up with modern PHP 8.4+, full type safety, and a cleaner architecture. If you're migrating from that package, see the [migration guide](docs/migration-from-eloquent-salesforce.md).
