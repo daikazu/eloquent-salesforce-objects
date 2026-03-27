@@ -56,14 +56,15 @@ class SOQLBuilder extends Builder
     }
 
     /**
-     * Batch operations - not yet implemented
+     * Batch operations are handled by SalesforceBatch.
      *
-     * @param  string|null  $tag
+     * @see \Daikazu\EloquentSalesforceObjects\Database\SalesforceBatch
      */
     public function batch($tag = null): never
     {
-        // TODO: Implement batch operations
-        throw new BadMethodCallException('Batch operations not yet implemented');
+        throw new BadMethodCallException(
+            'Use SalesforceBatch::new()->add()->run() instead. See SalesforceBatch for details.'
+        );
     }
 
     public function toSql()

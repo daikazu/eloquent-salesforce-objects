@@ -835,8 +835,8 @@ describe('getPicklistValues method', function () {
 });
 
 describe('batch method', function () {
-    it('throws exception for not implemented', function () {
+    it('throws exception directing to SalesforceBatch', function () {
         expect(fn () => Account::query()->batch())
-            ->toThrow(BadMethodCallException::class, 'not yet implemented');
+            ->toThrow(BadMethodCallException::class, 'SalesforceBatch');
     });
 });
