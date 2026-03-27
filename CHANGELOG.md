@@ -1,3 +1,45 @@
 # Changelog
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
+
+## v1.0.0 - 2026-03-27
+
+### v1.0.0 — Initial Stable Release
+
+The first stable release of Eloquent Salesforce Objects — a Laravel package that lets you work with Salesforce objects using familiar Eloquent syntax.
+
+#### Features
+
+- **Eloquent-Style Models** — Define Salesforce objects as Laravel models with `SalesforceModel` base class
+- **Full CRUD** — Create, read, update, and delete Salesforce records with automatic field filtering (updateable/createable)
+- **Relationships** — `hasMany`, `belongsTo`, and `hasOne` with Salesforce PascalCase foreign key conventions
+- **SOQL Query Builder** — Chainable query builder supporting `where`, `whereIn`, `whereNull`, `whereBetween`, `orderBy`, `limit`, `offset`, scopes, and more
+- **Batch Queries** — Execute multiple SOQL queries in a single API call via `SalesforceBatch`
+- **Bulk Operations** — Efficient bulk insert, update, and delete with automatic chunking (200 record limit)
+- **Aggregate Functions** — `count()`, `sum()`, `avg()`, `min()`, `max()`, `exists()`
+- **Pagination** — `paginate()` and `simplePaginate()` with Laravel's built-in paginator
+- **Cursor Pagination** — Memory-efficient streaming with `cursor()` and automatic `nextRecordsUrl` handling
+- **Soft Deletes** — `withTrashed()` and `onlyTrashed()` via Salesforce's `queryAll` and `IsDeleted` flag
+- **Apex REST** — Call custom Apex REST endpoints with `apexRest()` supporting all HTTP methods
+- **Model Generator** — `php artisan make:salesforce-model` scaffolds models from live Salesforce metadata with relationships, casts, and default columns
+- **Default Columns** — Optimize queries by defining `$defaultColumns` on models; override with `allColumns()` or explicit `select()`
+- **Metadata Caching** — Salesforce describe results cached with configurable TTL
+- **Picklist Values** — Retrieve active picklist values for any field
+- **SOQL Date Literals** — Full support for Salesforce date literals (`TODAY`, `LAST_N_DAYS:30`, etc.)
+- **Connection Test** — `php artisan salesforce:test` verifies your Salesforce connection
+
+#### Requirements
+
+- PHP 8.4+
+- Laravel 12.x or 13.x
+- [omniphx/forrest](https://github.com/omniphx/forrest) ^3.0
+
+#### Test Coverage
+
+- 471 tests, 1184 assertions
+- 82% code coverage
+- Zero PHPStan errors at level 5
+
+#### Credits
+
+Heavily inspired by [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce), rewritten from the ground up with modern PHP 8.4+, full type safety, and a cleaner architecture.
