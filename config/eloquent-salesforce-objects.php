@@ -110,7 +110,7 @@ return [
     | Batch Query Size
     |--------------------------------------------------------------------------
     |
-    | The number of queries to batch together when using SOQLBatch.
+    | The number of queries to batch together when using SalesforceBatch.
     | Salesforce limits batch requests to a maximum of 25 queries per batch.
     |
     */

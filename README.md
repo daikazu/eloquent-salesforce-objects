@@ -26,6 +26,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
 - **Relationships** - Support for `hasMany`, `belongsTo`, and `hasOne` relationships
 - **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX support
 - **Pagination** - Built-in pagination with Laravel's paginator
+- **Batch Queries** - Execute multiple SOQL queries in a single API call
 - **Bulk Operations** - Efficient bulk insert, update, and delete operations
 - **Automatic Authentication** - Seamless OAuth token management via [omniphx/forrest](https://github.com/omniphx/forrest)
 - **Field Mapping** - Automatic conversion between Laravel and Salesforce naming conventions (optional)
@@ -50,6 +51,7 @@ Eloquent Salesforce Objects is a powerful Laravel package built on top of the ex
   - [CRUD Operations](docs/crud.md)
   - [Relationships](docs/relationships.md)
   - [Working with Timestamps](docs/timestamps.md)
+  - [Batch Queries](docs/batch-queries.md)
   - [Bulk Operations](docs/bulk-operations.md)
   - [Custom Apex REST Endpoints](docs/apex-rest.md)
   - [Aggregate Functions](docs/aggregates.md)
@@ -165,6 +167,7 @@ For detailed installation and configuration instructions, see:
 
 ### Advanced Features
 
+- **[Batch Queries](docs/batch-queries.md)** - Execute multiple SOQL queries in one API call
 - **[Bulk Operations](docs/bulk-operations.md)** - Efficient bulk insert, update, and delete
 - **[Custom Apex REST Endpoints](docs/apex-rest.md)** - Call custom Apex REST endpoints
 - **[Aggregate Functions](docs/aggregates.md)** - Using COUNT, SUM, AVG, MIN, MAX

@@ -244,18 +244,36 @@ $accounts = Account::whereNull('Industry')->get();
 $count = Account::where('Industry', 'Technology')->count();
 ```
 
-### Batch Queries (Removed)
+### Batch Queries (New API)
 
-The old package had a batch query feature that let you queue multiple queries and execute them in one API call:
+The old package had a batch query feature using implicit global state. The new package has an explicit fluent API via `SalesforceBatch`:
 
 ```php
-// OLD — no longer available
+// OLD
 Lead::select(['Id', 'FirstName'])->batch();
 Contact::select(['Id', 'Phone'])->batch();
 $results = SObjects::runBatch();
+$leads = $results->results('Lead_0');
+
+// NEW
+use Daikazu\EloquentSalesforceObjects\Database\SalesforceBatch;
+
+$results = SalesforceBatch::new()
+    ->add('leads', Lead::select(['Id', 'FirstName']))
+    ->add('contacts', Contact::select(['Id', 'Phone']))
+    ->run();
+
+$leads = $results->get('leads');       // Collection of Lead models
+$contacts = $results->get('contacts'); // Collection of Contact models
 ```
 
-This feature is not available in the new package. Execute queries individually instead.
+Key differences:
+- Named results instead of auto-generated keys like `Lead_0`
+- Explicit scope — no global state or hidden queue
+- Also accepts raw SOQL strings: `->add('stats', "SELECT COUNT(Id) FROM Lead")`
+- Each query succeeds or fails independently: `$results->failed('leads')`
+
+See the [Batch Queries documentation](batch-queries.md) for full details.
 
 ## CRUD Operations
 
@@ -417,8 +435,8 @@ $result = $adapter->query('SELECT Id FROM Lead LIMIT 1');
 
 | Feature | Notes |
 |---------|-------|
-| `->batch()` query method | Execute queries individually |
-| `SObjects::runBatch()` | No batch query support |
+| `->batch()` query method | Use `SalesforceBatch::new()->add()->run()` instead |
+| `SObjects::runBatch()` | Use `SalesforceBatch::new()->add()->run()` instead |
 | `$shortDates` property | Dates handled automatically via casts |
 | `SalesForceObject` anonymous model | Use `SalesforceModel` or a named model |
 | Custom headers | Not supported |
@@ -431,6 +449,7 @@ Features available in this package that weren't in the old one:
 | Feature | Description |
 |---------|-------------|
 | [Model Generator](model-generator.md) | `php artisan make:salesforce-model` scaffolds models from live metadata |
+| [Batch Queries](batch-queries.md) | Fluent API for executing multiple SOQL queries in one API call |
 | Field Mapping | Automatic conversion between `snake_case` and `PascalCase` field names |
 | Exception Control | Configure whether API errors throw exceptions or return false |
 | Metadata Caching | Describe results cached with configurable TTL |
@@ -457,7 +476,7 @@ Features available in this package that weren't in the old one:
 - [ ] Remove `$dates` arrays (use `casts()` method instead for custom dates)
 - [ ] Remove `$shortDates` arrays
 - [ ] Replace `SObjects::` facade calls with `SalesforceAdapter`
-- [ ] Replace batch queries with individual queries
+- [ ] Replace `->batch()` / `SObjects::runBatch()` with `SalesforceBatch::new()->add()->run()`
 - [ ] Replace `SyncsWithSalesforce` trait usage with custom sync logic
 
 ### Configuration
