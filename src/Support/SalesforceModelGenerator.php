@@ -91,7 +91,7 @@ class SalesforceModelGenerator
      * Used to ensure belongsTo foreign keys are included in $defaultColumns.
      *
      * @param  array  $relationships  Selected relationship definitions
-     * @return array  Foreign key column names from belongsTo relationships
+     * @return array Foreign key column names from belongsTo relationships
      */
     public static function getRelationshipForeignKeys(array $relationships): array
     {
