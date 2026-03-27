@@ -345,3 +345,243 @@ describe('SOQLBuilder — cursor() with defaultColumns', function () {
         iterator_to_array(Account::select(['Id', 'Name'])->cursor());
     });
 });
+
+// ===========================================================================
+// SOQLGrammar — compileAggregate
+// ===========================================================================
+
+describe('SOQLGrammar — compileAggregate with COUNT(*)', function () {
+    it('compiles COUNT() with no argument when column is wildcard', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        // count() calls aggregate('count', ['*']) which issues a Forrest::query call.
+        // We capture the SOQL string that reaches Forrest to verify grammar output.
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(function (string $soql): bool {
+                // SOQL: select COUNT() from Account
+                return str_contains($soql, 'COUNT()');
+            }))
+            ->andReturn([
+                'totalSize' => 5,
+                'done'      => true,
+                'records'   => [],
+            ]);
+
+        $result = Account::count();
+
+        expect($result)->toBe(5);
+    });
+
+    it('uses COUNT(Id) for non-wildcard aggregate when * is specified for non-count aggregates', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        // max() with '*' column should fall back to max(Id) per grammar logic
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(function (string $soql): bool {
+                return str_contains(strtoupper($soql), 'MAX(Id)') || str_contains($soql, 'MAX(Id)');
+            }))
+            ->andReturn([
+                'totalSize' => 1,
+                'done'      => true,
+                'records'   => [['expr0' => '001xx000003']],
+            ]);
+
+        Account::max('*');
+    });
+});
+
+describe('SOQLGrammar — compileAggregate with distinct', function () {
+    it('prepends distinct to the column name for COUNT(DISTINCT …)', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(function (string $soql): bool {
+                // Grammar produces: select COUNT(distinct Name) from Account
+                return str_contains($soql, 'COUNT(distinct Name)');
+            }))
+            ->andReturn([
+                'totalSize' => 3,
+                'done'      => true,
+                'records'   => [['expr0' => 3]],
+            ]);
+
+        Account::distinct()->count('Name');
+    });
+
+    it('does not prepend distinct when column is empty (COUNT with wildcard)', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        // distinct()->count() still uses COUNT() with no argument — distinct on * is a no-op
+        // per grammar: $column === '' after * is resolved, so distinct branch is skipped
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(function (string $soql): bool {
+                return str_contains($soql, 'COUNT()') && ! str_contains($soql, 'distinct');
+            }))
+            ->andReturn([
+                'totalSize' => 7,
+                'done'      => true,
+                'records'   => [],
+            ]);
+
+        Account::distinct()->count('*');
+    });
+});
+
+// ===========================================================================
+// SOQLGrammar — compileLock
+// ===========================================================================
+
+describe('SOQLGrammar — compileLock FOR UPDATE', function () {
+    it('appends FOR UPDATE to the compiled SOQL', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::lockForUpdate()->toSql();
+
+        expect($sql)->toContain('FOR UPDATE');
+    });
+
+    it('places FOR UPDATE after the FROM clause', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::lockForUpdate()->toSql();
+
+        $fromPos     = strpos($sql, 'from Account');
+        $lockPos     = strpos($sql, 'FOR UPDATE');
+
+        expect($fromPos)->not->toBeFalse();
+        expect($lockPos)->not->toBeFalse();
+        expect($lockPos)->toBeGreaterThan($fromPos);
+    });
+
+    it('can be combined with WHERE clauses', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::where('Name', 'Acme')->lockForUpdate()->toSql();
+
+        expect($sql)->toContain('where');
+        expect($sql)->toContain('FOR UPDATE');
+    });
+});
+
+// ===========================================================================
+// SOQLGrammar — whereIn with empty values
+// ===========================================================================
+
+describe('SOQLGrammar — whereIn with empty values', function () {
+    it('compiles to Id = null when an empty array is passed', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::whereIn('Id', [])->toSql();
+
+        expect($sql)->toContain('Id = null');
+    });
+
+    it('does not produce an IN () clause for an empty array', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::whereIn('Id', [])->toSql();
+
+        expect($sql)->not->toContain(' in (');
+        expect($sql)->not->toContain('in ()');
+    });
+
+    it('produces a normal IN clause when values are present', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        $sql = Account::whereIn('Id', ['001xx000001', '001xx000002'])->toSql();
+
+        expect($sql)->toContain(' in (');
+        expect($sql)->not->toContain('Id = null');
+    });
+
+    it('produces Id = null for a non-Id column with an empty array', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        // Grammar hard-codes 'Id = null' regardless of which column is used
+        $sql = Account::whereIn('Industry', [])->toSql();
+
+        expect($sql)->toContain('Id = null');
+    });
+});
+
+// ===========================================================================
+// SOQLGrammar — grammarPlural (via toSql inspection is indirect;
+//                               tested via compileJoins through join())
+// ===========================================================================
+
+describe('SOQLGrammar — grammarPlural pluralization rules', function () {
+    it('pluralizes a standard table name using Str::plural', function () {
+        // Verify via grammar directly: wrap in a minimal unit test.
+        // grammarPlural is private, so we exercise it via the public checkStringLiteral path.
+        // The most reliable surface is to verify the grammar instance method through reflection.
+        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
+            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        );
+        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+
+        $method = new ReflectionMethod($grammar, 'grammarPlural');
+        $method->setAccessible(true);
+
+        // Standard word: Contact -> Contacts
+        expect($method->invoke($grammar, 'Contact'))->toBe('Contacts');
+    });
+
+    it('applies the special -try -> -tries rule for words ending exactly in "try"', function () {
+        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
+            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        );
+        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+
+        $method = new ReflectionMethod($grammar, 'grammarPlural');
+        $method->setAccessible(true);
+
+        // A table name that truly ends with 'try' (e.g. a custom object suffixed with _try)
+        expect($method->invoke($grammar, 'Object_try'))->toBe('Object_tries');
+        expect($method->invoke($grammar, 'My_Custom_try'))->toBe('My_Custom_tries');
+    });
+
+    it('does not apply the -try rule when the last three characters are not exactly "try"', function () {
+        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
+            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        );
+        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+
+        $method = new ReflectionMethod($grammar, 'grammarPlural');
+        $method->setAccessible(true);
+
+        // 'Country' ends with 'ntry', not 'try' — falls through to Str::plural
+        expect($method->invoke($grammar, 'Country'))->toBe('Countries');
+
+        // 'Entry' ends with 'ntry', not 'try' — falls through to Str::plural
+        expect($method->invoke($grammar, 'OpportunityLineItemEntry'))->toBe('OpportunityLineItemEntries');
+    });
+
+    it('falls through to Str::plural for words not ending in -try', function () {
+        $connection = new \Daikazu\EloquentSalesforceObjects\Database\SOQLConnection(
+            app(\Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter::class)
+        );
+        $grammar = new \Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar($connection);
+
+        $method = new ReflectionMethod($grammar, 'grammarPlural');
+        $method->setAccessible(true);
+
+        expect($method->invoke($grammar, 'Account'))->toBe('Accounts');
+        expect($method->invoke($grammar, 'Opportunity'))->toBe('Opportunities');
+        expect($method->invoke($grammar, 'Lead'))->toBe('Leads');
+    });
+});
