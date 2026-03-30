@@ -2,6 +2,13 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## v1.0.1 - 2026-03-30
+
+### Fixed
+
+- Made `describe()`, `picklistValues()`, and `fieldMetadata()` on `HasSalesforceMetadata` trait callable statically (e.g. `Account::describe()`)
+- Fixed docs referencing non-existent `getPicklistValues()` method — correct method is `picklistValues()`
+
 ## v1.0.0 - 2026-03-27
 
 ### v1.0.0 — Initial Stable Release
