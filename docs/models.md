@@ -358,7 +358,7 @@ foreach ($fields as $field) {
 }
 
 // Get picklist values
-$industryOptions = Account::getPicklistValues('Industry');
+$industryOptions = Account::picklistValues('Industry');
 
 foreach ($industryOptions as $option) {
     echo "{$option['label']} => {$option['value']}\n";

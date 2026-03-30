@@ -49,6 +49,23 @@ describe('HasSalesforceMetadata', function () {
 
             expect($result)->toBe([]);
         });
+
+        it('can be called statically', function () {
+            $expected = [
+                ['value' => 'Technology', 'label' => 'Technology'],
+                ['value' => 'Finance', 'label' => 'Finance'],
+            ];
+
+            $this->mockAdapter
+                ->shouldReceive('picklistValues')
+                ->once()
+                ->with('Account', 'Industry')
+                ->andReturn($expected);
+
+            $result = Account::picklistValues('Industry');
+
+            expect($result)->toBe($expected);
+        });
     });
 
     describe('describe()', function () {
@@ -89,6 +106,26 @@ describe('HasSalesforceMetadata', function () {
             $result = $this->account->describe();
 
             expect($result)->toHaveKeys(['name', 'label', 'fields', 'recordTypes']);
+        });
+
+        it('can be called statically', function () {
+            $expected = [
+                'name'   => 'Account',
+                'fields' => [
+                    ['name' => 'Id', 'type' => 'id'],
+                    ['name' => 'Name', 'type' => 'string'],
+                ],
+            ];
+
+            $this->mockAdapter
+                ->shouldReceive('describe')
+                ->once()
+                ->with('Account')
+                ->andReturn($expected);
+
+            $result = Account::describe();
+
+            expect($result)->toBe($expected);
         });
     });
 
@@ -165,6 +202,23 @@ describe('HasSalesforceMetadata', function () {
             $result = $this->account->fieldMetadata('Name');
 
             expect($result)->toBe($first);
+        });
+
+        it('can be called statically', function () {
+            $this->mockAdapter
+                ->shouldReceive('describe')
+                ->once()
+                ->with('Account')
+                ->andReturn([
+                    'fields' => [
+                        ['name' => 'Id', 'type' => 'id', 'label' => 'Account ID'],
+                        ['name' => 'Name', 'type' => 'string', 'label' => 'Account Name'],
+                    ],
+                ]);
+
+            $result = Account::fieldMetadata('Name');
+
+            expect($result)->toBe(['name' => 'Name', 'type' => 'string', 'label' => 'Account Name']);
         });
     });
 });

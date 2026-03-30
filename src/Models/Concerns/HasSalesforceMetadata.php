@@ -11,35 +11,49 @@ trait HasSalesforceMetadata
     /**
      * Get picklist values for a specific field on this model
      *
+     * Can be called statically or on an instance:
+     *   Account::picklistValues('Industry')
+     *   $account->picklistValues('Industry')
+     *
      * @param  string  $field  Field name
      * @return array Array of picklist values with 'value' and 'label' keys
      */
-    public function picklistValues(string $field): array
+    public static function picklistValues(string $field): array
     {
-        $adapter = $this->getSalesforceAdapter();
+        $instance = new static;
+        $adapter = $instance->getSalesforceAdapter();
 
-        return $adapter->picklistValues($this->getTable(), $field);
+        return $adapter->picklistValues($instance->getTable(), $field);
     }
 
     /**
      * Get the describe metadata for this model's Salesforce object
+     *
+     * Can be called statically or on an instance:
+     *   Account::describe()
+     *   $account->describe()
      */
-    public function describe(): array
+    public static function describe(): array
     {
-        $adapter = $this->getSalesforceAdapter();
+        $instance = new static;
+        $adapter = $instance->getSalesforceAdapter();
 
-        return $adapter->describe($this->getTable());
+        return $adapter->describe($instance->getTable());
     }
 
     /**
      * Get metadata for a specific field
      *
+     * Can be called statically or on an instance:
+     *   Account::fieldMetadata('Name')
+     *   $account->fieldMetadata('Name')
+     *
      * @param  string  $field  Field name
      * @return array|null Field metadata or null if not found
      */
-    public function fieldMetadata(string $field): ?array
+    public static function fieldMetadata(string $field): ?array
     {
-        $metadata = $this->describe();
+        $metadata = static::describe();
 
         return collect($metadata['fields'] ?? [])->firstWhere('name', $field);
     }
