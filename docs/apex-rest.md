@@ -295,7 +295,7 @@ The `apexRest()` method automatically normalizes endpoint paths for convenience 
 
 ### Flexible Path Formats
 
-All of these work identically:
+These are equivalent (a leading slash is added if missing):
 
 ```php
 // Simple path
@@ -304,20 +304,16 @@ $adapter->apexRest('CreateOrder', [...]);
 // With leading slash (recommended - matches Forrest documentation)
 $adapter->apexRest('/CreateOrder', [...]);
 
-// With trailing slash
-$adapter->apexRest('CreateOrder/', [...]);
-
-// With both
-$adapter->apexRest('/CreateOrder/', [...]);
-
-// All of the above result in the same API call to:
+// Both result in the same API call to:
 // {instanceUrl}/services/apexrest/CreateOrder
 ```
+
+> **Note:** Trailing slashes are preserved. Salesforce treats `/CreateOrder` and `/CreateOrder/` as different endpoints, so `apexRest('CreateOrder/')` calls `/CreateOrder/`, not `/CreateOrder`.
 
 ### How It Works
 
 The adapter:
-1. Normalizes your path to ensure it starts with `/` (e.g., `CreateOrder` becomes `/CreateOrder`)
+1. Ensures your path starts with `/` (e.g., `CreateOrder` becomes `/CreateOrder`). Trailing slashes are preserved.
 2. Passes it to Forrest's `custom()` method
 3. Forrest automatically prepends `/services/apexrest` and your instance URL
 

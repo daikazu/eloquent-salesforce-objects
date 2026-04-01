@@ -596,7 +596,7 @@ class SalesforceAdapter implements AdapterInterface
      *
      * Uses Forrest's custom() method which automatically prepends /services/apexrest
      *
-     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder', or '/CreateOrder/')
+     * @param  string  $path  The Apex REST path (e.g., '/CreateOrder', 'CreateOrder', '/CreateOrder/'). Trailing slashes are preserved as Salesforce treats them differently.
      * @param  array  $options  Options array with 'method' (GET|POST|PATCH|DELETE|PUT) and optional 'body' and 'parameters'
      * @return array Response data
      *
@@ -616,8 +616,8 @@ class SalesforceAdapter implements AdapterInterface
             throw new SalesforceException("Invalid HTTP method: {$method}. Allowed methods: " . implode(', ', $allowedMethods));
         }
 
-        // Normalize path: ensure leading slash, strip trailing slash
-        $path = '/' . trim($path, '/');
+        // Normalize path: ensure leading slash, preserve trailing slash
+        $path = '/' . ltrim($path, '/');
 
         try {
             // Prepare the request options for Forrest::custom()

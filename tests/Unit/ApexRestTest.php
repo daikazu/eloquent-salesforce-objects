@@ -54,11 +54,11 @@ describe('apexRest method', function () {
             expect($response)->toHaveKey('orderId');
         });
 
-        it('normalizes path with trailing slash', function () {
+        it('preserves trailing slash in path', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
             Forrest::shouldReceive('custom')
                 ->once()
-                ->with('/CreateOrder', Mockery::any())
+                ->with('/CreateOrder/', Mockery::any())
                 ->andReturn(['orderId' => '12345', 'success' => true]);
 
             $response = $this->adapter->apexRest('CreateOrder/', [
@@ -69,11 +69,11 @@ describe('apexRest method', function () {
             expect($response)->toHaveKey('orderId');
         });
 
-        it('normalizes path with both leading and trailing slashes', function () {
+        it('preserves trailing slash with both leading and trailing slashes', function () {
             Forrest::shouldReceive('hasToken')->andReturn(true);
             Forrest::shouldReceive('custom')
                 ->once()
-                ->with('/CustomEndpoint', Mockery::any())
+                ->with('/CustomEndpoint/', Mockery::any())
                 ->andReturn(['data' => 'value']);
 
             $response = $this->adapter->apexRest('/CustomEndpoint/');

@@ -2,6 +2,12 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## v1.0.2 - 2026-04-01
+
+### Fixed
+
+- **Apex REST trailing slash handling** — `apexRest()` no longer strips trailing slashes from paths. Salesforce treats `/CreateOrder` and `/CreateOrder/` as different endpoints, so the path is now preserved as provided. Only a leading slash is added if missing.
+
 ## v1.0.1 - 2026-03-30
 
 ### Fixed
