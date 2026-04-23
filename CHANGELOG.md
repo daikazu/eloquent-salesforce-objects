@@ -2,6 +2,12 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## v1.0.3 - 2026-04-23
+
+### Fixed
+
+- **Unqualified Salesforce object names no longer collide with Laravel facade aliases** — `describe()`, `picklistValues()`, and related metadata calls on models whose object name matches a registered global alias (e.g. `Event`, `Task`, `User`, `Note`, `Case`) were throwing `"Class must extend SalesforceModel"`. `resolveObjectName()` now only treats a string as a class when it contains a namespace separator, so bare SF object names are passed through to the API as intended.
+
 ## v1.0.2 - 2026-04-01
 
 ### Fixed

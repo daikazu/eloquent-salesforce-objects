@@ -5,16 +5,10 @@ declare(strict_types=1);
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
-use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\AccountWithExplicitTable;
+use Mockery\Mock;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
-
-// A minimal SalesforceModel subclass with an explicit $table property, used to test
-// getTableNameFromClass when the class has a non-null default for $table.
-class AccountWithExplicitTable extends SalesforceModel
-{
-    protected $table = 'Account__c';
-}
 
 // Baseline describe response shared across tests
 function minimalDescribeResponse(): array
@@ -127,9 +121,23 @@ describe('resolveObjectName (via describe())', function () {
             ->toThrow(SalesforceException::class, 'Object must be an instance of SalesforceModel');
     });
 
-    it('throws SalesforceException when a non-SalesforceModel class string is passed', function () {
-        expect(fn () => $this->adapter->describe(stdClass::class))
+    it('throws SalesforceException when a namespaced non-SalesforceModel class string is passed', function () {
+        expect(fn () => $this->adapter->describe(Mock::class))
             ->toThrow(SalesforceException::class, 'Class must extend SalesforceModel');
+    });
+
+    it('treats a bare unqualified name as a Salesforce object name even when a global alias exists', function () {
+        // Regression: Laravel registers global facade aliases like `Event` that make
+        // `class_exists('Event')` return true. The adapter must not mistake the Salesforce
+        // object name `Event` for a PHP class and reject it as "not a SalesforceModel".
+        Forrest::shouldReceive('describe')
+            ->once()
+            ->with('Event')
+            ->andReturn(['name' => 'Event', 'fields' => []]);
+
+        $result = $this->adapter->describe('Event');
+
+        expect($result['name'])->toBe('Event');
     });
 });
 

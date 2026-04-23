@@ -667,14 +667,19 @@ class SalesforceAdapter implements AdapterInterface
             return $object->getTable();
         }
 
-        // String input - could be object name or class string
-        if (class_exists($object)) {
-            // It's a class string (e.g., Account::class)
+        // String input - could be object name or class string.
+        //
+        // We require a namespace separator before treating the string as a class. A bare
+        // Salesforce object name (e.g. "Event", "Task", "Case", "User", "Note") collides
+        // with Laravel's global facade aliases and common PHP classes, so `class_exists()`
+        // on an unqualified name can trigger the AliasLoader and produce false positives.
+        // Class constants (`Foo\Bar::class`) always return a fully qualified name, so they
+        // still take this branch.
+        if (str_contains($object, '\\') && class_exists($object)) {
             if (! is_subclass_of($object, SalesforceModel::class)) {
                 throw new SalesforceException('Class must extend SalesforceModel');
             }
 
-            // Get table name without instantiation using reflection
             return $this->getTableNameFromClass($object);
         }
 
