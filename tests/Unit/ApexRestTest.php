@@ -402,8 +402,9 @@ describe('apexRest method', function () {
         });
 
         it('throws authentication exception when not authenticated', function () {
+            // Called twice: outer fast-path check + inner double-check inside the auth lock.
             Forrest::shouldReceive('hasToken')
-                ->once()
+                ->twice()
                 ->andReturn(false);
 
             Forrest::shouldReceive('authenticate')

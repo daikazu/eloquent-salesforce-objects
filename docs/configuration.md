@@ -30,6 +30,30 @@ Creates `config/eloquent-salesforce-objects.php`.
 | `log_level` | `error` | Log level for Salesforce errors |
 | `enable_query_log` | `false` | Log all SOQL queries (useful for debugging) |
 
+### Authentication Resilience
+
+Controls how the package handles Salesforce OAuth authentication under concurrency and transient failures. Defaults are safe for most apps; tune these only if you see auth-related issues.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `authentication.retry_attempts` | `3` | Total OAuth attempts (incl. first). Only retries on transient errors. |
+| `authentication.retry_base_delay_ms` | `250` | Base delay between retries (ms). Backoff is exponential + jitter. |
+| `authentication.lock_wait_seconds` | `8` | How long a worker waits to acquire the single-flight auth lock. |
+| `authentication.lock_ttl_seconds` | `10` | Max time the auth lock is held. |
+
+**What gets retried:**
+
+- Salesforce's `400 { "error": "unknown_error", "error_description": "retry your request" }` (Salesforce-side transient throttle on the OAuth endpoint).
+- HTTP 5xx responses.
+- Network/TLS errors (`GuzzleHttp\Exception\ConnectException`).
+
+**What never gets retried:**
+
+- `invalid_grant`, `invalid_client_id`, `authentication failure` — credential/config issues. Retrying makes the problem worse.
+- All other 4xx responses.
+
+**Why the lock exists:** without it, if many workers (e.g. Horizon queue workers) hit a cache miss simultaneously, they would all `POST /services/oauth2/token` in parallel. Salesforce throttles concurrent OAuth requests for the same connected app + user, which produces the `unknown_error / retry your request` failure described above. The lock collapses the herd: one worker authenticates, the rest read the freshly-cached token.
+
 ### Other
 
 | Key | Default | Description |
@@ -76,6 +100,12 @@ SALESFORCE_THROW_EXCEPTIONS=true
 SALESFORCE_LOG_CHANNEL=
 SALESFORCE_LOG_LEVEL=error
 SALESFORCE_QUERY_LOG=false
+
+# Authentication Resilience
+SALESFORCE_AUTH_RETRY_ATTEMPTS=3
+SALESFORCE_AUTH_RETRY_BASE_DELAY_MS=250
+SALESFORCE_AUTH_LOCK_WAIT_SECONDS=8
+SALESFORCE_AUTH_LOCK_TTL_SECONDS=10
 ```
 
 **Tip:** Use `SALESFORCE_THROW_EXCEPTIONS=true` in development and `false` in production for graceful degradation.

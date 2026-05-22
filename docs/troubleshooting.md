@@ -46,6 +46,29 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    - User profile must have "API Enabled" permission
    - Check in Salesforce: Setup → Users → User → Profile → System Permissions
 
+### "unknown_error / retry your request" 400 from `/services/oauth2/token`
+
+**Problem:** Production logs show repeated 400 responses from `POST https://login.salesforce.com/services/oauth2/token`:
+
+```
+{"error":"unknown_error","error_description":"retry your request"}
+```
+
+**What it means:** This is Salesforce's documented transient envelope on the OAuth endpoint. It's *not* a credentials problem (that would be `invalid_grant`). The two common causes are:
+
+1. **Concurrent OAuth calls from your app** — many workers cache-miss simultaneously and all POST to the token endpoint at once. Salesforce throttles concurrent requests for the same connected app + user.
+2. **Another app sharing the same connected app / username** — e.g. an admin running `sfdx`, a Zapier integration, the old portal — competes for token issuance and triggers the same throttle.
+
+**Solutions:**
+
+1. **Upgrade to v1.1.0+** — this package now adds a single-flight lock + selective retry around `Forrest::authenticate()`. The lock collapses concurrent token requests into one OAuth call, and the retry absorbs Salesforce's transient blips. See [Authentication Resilience](configuration.md#authentication-resilience).
+
+2. **Check Salesforce Login History** — Setup → Identity → Login History, filtered by your connected app. If you see attempts from IPs/clients you don't recognize, another app is sharing your credentials.
+
+3. **Use a dedicated Salesforce integration user per app** — separate username (and ideally separate connected app) for each application. Eliminates cross-app contention on the OAuth endpoint and is Salesforce's recommended pattern.
+
+4. **Tune retry config if needed** — for very chatty workloads, increase `SALESFORCE_AUTH_RETRY_ATTEMPTS` or `SALESFORCE_AUTH_RETRY_BASE_DELAY_MS`. Defaults work for most apps.
+
 ### "Invalid Grant" Error
 
 **Problem:** OAuth authentication fails with "invalid grant".

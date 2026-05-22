@@ -44,6 +44,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Authentication Resilience
+    |--------------------------------------------------------------------------
+    |
+    | Controls how the package handles Salesforce OAuth authentication under
+    | concurrency and transient failures.
+    |
+    | 'retry_attempts'      - Total attempts (including the first) when calling
+    |                         the OAuth endpoint. Only retries on transient signals:
+    |                         connection errors, HTTP 5xx, and Salesforce's
+    |                         documented 400 "unknown_error / retry your request".
+    |                         Permanent errors (invalid_grant, bad credentials)
+    |                         are never retried.
+    | 'retry_base_delay_ms' - Base delay between attempts in milliseconds.
+    |                         Backoff is exponential with jitter.
+    | 'lock_wait_seconds'   - How long a worker will wait to acquire the
+    |                         single-flight authentication lock.
+    | 'lock_ttl_seconds'    - Maximum time the lock is held. Should comfortably
+    |                         exceed worst-case OAuth round-trip + retries.
+    |
+    */
+    'authentication' => [
+        'retry_attempts'      => env('SALESFORCE_AUTH_RETRY_ATTEMPTS', 3),
+        'retry_base_delay_ms' => env('SALESFORCE_AUTH_RETRY_BASE_DELAY_MS', 250),
+        'lock_wait_seconds'   => env('SALESFORCE_AUTH_LOCK_WAIT_SECONDS', 8),
+        'lock_ttl_seconds'    => env('SALESFORCE_AUTH_LOCK_TTL_SECONDS', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Metadata Cache TTL
     |--------------------------------------------------------------------------
     |
