@@ -373,6 +373,43 @@ class SOQLBuilder extends Builder
     }
 
     /**
+     * Chunk the results. Salesforce caps OFFSET at 2000, so a query without its own
+     * order, offset or limit pages by Id instead ("Id > last order by Id").
+     *
+     * @param  int  $count
+     */
+    public function chunk($count, callable $callback): bool
+    {
+        return $this->canPageById()
+            ? $this->chunkById($count, $callback, 'Id')
+            : parent::chunk($count, $callback);
+    }
+
+    /**
+     * Lazily iterate the results, paging by Id when possible (see chunk()).
+     *
+     * @param  int  $chunkSize
+     */
+    public function lazy($chunkSize = 1000)
+    {
+        return $this->canPageById()
+            ? $this->lazyById($chunkSize, 'Id')
+            : parent::lazy($chunkSize);
+    }
+
+    /**
+     * Whether paging by Id returns the same rows as OFFSET paging would: only when
+     * the query sets no order, offset or limit of its own.
+     */
+    protected function canPageById(): bool
+    {
+        $query = $this->getQuery();
+
+        return empty($query->orders) && empty($query->unionOrders)
+            && $query->offset === null && $query->limit === null;
+    }
+
+    /**
      * Paginate query results with full pagination info
      *
      * Runs a COUNT query to get total records, then fetches the requested page.
