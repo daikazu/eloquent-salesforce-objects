@@ -141,9 +141,8 @@ $avgOppAmount = Opportunity::where('StageName', 'Closed Won')
     ->avg('Amount');
 
 // Average deal size by industry
-$avgTechDeal = Opportunity::whereHas('account', function ($query) {
-    $query->where('Industry', 'Technology');
-})->avg('Amount');
+$avgTechDeal = Opportunity::where('Account.Industry', 'Technology')
+    ->avg('Amount');
 
 // Average employee count
 $avgEmployees = Account::where('Type', 'Customer')
@@ -388,9 +387,7 @@ public function industryAnalysis()
                 ->avg('AnnualRevenue'),
             'max_revenue' => Account::where('Industry', $industry)
                 ->max('AnnualRevenue'),
-            'opportunity_count' => Opportunity::whereHas('account', function ($query) use ($industry) {
-                $query->where('Industry', $industry);
-            })->count(),
+            'opportunity_count' => Opportunity::where('Account.Industry', $industry)->count(),
         ];
     }
 

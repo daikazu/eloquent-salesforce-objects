@@ -421,10 +421,11 @@ class SOQLBuilder extends Builder
         // Salesforce SOQL does not support column-to-column comparisons in WHERE clauses.
         // Generating such queries will lead to MALFORMED_QUERY errors like:
         //   unexpected token: 'Some__r.Field__c'
-        // Suggest alternatives that SOQL supports.
+        // Eloquent's has()/whereHas()/doesntHave()/withCount() also compile to whereColumn,
+        // so this is where they fail too. Suggest the semi-join SOQL does support.
         throw new InvalidArgumentException(
-            'SOQL does not support whereColumn (column-to-column comparisons). ' .
-            'Use relationship constraints (whereHas/has) or a semi-join: "Id IN (SELECT Lookup__c FROM Child__c WHERE ...)".'
+            'SOQL does not support column-to-column comparisons (whereColumn, has, whereHas, doesntHave, withCount). ' .
+            'Use a semi-join instead: ->whereIn(\'Id\', fn ($q) => $q->select(\'Lookup__c\')->from(\'Child__c\')->where(...)).'
         );
     }
 

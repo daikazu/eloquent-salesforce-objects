@@ -313,82 +313,81 @@ if (!$account->relationLoaded('contacts')) {
 
 ## Querying Relationships
 
-### Has Relationship
+SOQL has no column-to-column comparisons, so Eloquent's `has()`, `whereHas()`, `doesntHave()`, `whereDoesntHave()` and `withCount()` are **not supported** and throw an `InvalidArgumentException`. Use the SOQL patterns below instead.
 
-Query parent based on existence of children:
+### Filter Parents by Their Children (Semi-Join)
+
+Pass a closure to `whereIn` to build a SOQL semi-join. It replaces `has()` and `whereHas()`:
 
 ```php
 // Accounts that have at least one contact
-$accounts = Account::has('contacts')->get();
+$accounts = Account::whereIn('Id', fn ($q) => $q->select('AccountId')->from('Contact'))->get();
 
-// Accounts with more than 5 contacts
-$accounts = Account::has('contacts', '>', 5)->get();
+// Accounts with contacts having Gmail addresses
+$accounts = Account::whereIn('Id', fn ($q) => $q->select('AccountId')
+    ->from('Contact')
+    ->where('Email', 'LIKE', '%@gmail.com'))
+    ->get();
 
-// Accounts with at least one closed-won opportunity
-$accounts = Account::has('opportunities')
-    ->whereHas('opportunities', function ($query) {
-        $query->where('StageName', 'Closed Won');
-    })
+// Accounts with high-value opportunities
+$accounts = Account::whereIn('Id', fn ($q) => $q->select('AccountId')
+    ->from('Opportunity')
+    ->where('Amount', '>', 100000))
     ->get();
 ```
 
-### WhereHas
+This sends a single query:
 
-Query parent based on child conditions:
-
-```php
-// Accounts with contacts having Gmail addresses
-$accounts = Account::whereHas('contacts', function ($query) {
-    $query->where('Email', 'LIKE', '%@gmail.com');
-})->get();
-
-// Accounts with high-value opportunities
-$accounts = Account::whereHas('opportunities', function ($query) {
-    $query->where('Amount', '>', 100000);
-})->get();
+```sql
+SELECT ... FROM Account WHERE Id IN (SELECT AccountId FROM Contact WHERE Email LIKE '%@gmail.com')
 ```
 
-### Doesn't Have
+### Parents Without Children (Anti-Join)
 
-Query for parents without children:
+`whereNotIn` replaces `doesntHave()` and `whereDoesntHave()`:
 
 ```php
 // Accounts without contacts
-$accounts = Account::doesntHave('contacts')->get();
+$accounts = Account::whereNotIn('Id', fn ($q) => $q->select('AccountId')->from('Contact'))->get();
 
 // Accounts without open opportunities
-$accounts = Account::whereDoesntHave('opportunities', function ($query) {
-    $query->where('IsClosed', false);
-})->get();
+$accounts = Account::whereNotIn('Id', fn ($q) => $q->select('AccountId')
+    ->from('Opportunity')
+    ->where('IsClosed', false))
+    ->get();
 ```
+
+### Filter Children by Their Parent
+
+Use SOQL's relationship dot notation (the relationship name, not the lookup field):
+
+```php
+// Opportunities whose account is in the Technology industry
+$opportunities = Opportunity::where('Account.Industry', 'Technology')->get();
+```
+
+For a custom lookup `Parent_Account__c`, the relationship name is `Parent_Account__r`: `where('Parent_Account__r.Industry', 'Technology')`.
 
 ### Counting Related Records
 
+`withCount()` is not available. To count one parent's children, query the relationship:
+
 ```php
-// Get accounts with contact count
-$accounts = Account::withCount('contacts')->get();
-
-foreach ($accounts as $account) {
-    echo "{$account->Name}: {$account->contacts_count} contacts\n";
-}
-
-// Multiple counts
-$accounts = Account::withCount(['contacts', 'opportunities', 'cases'])->get();
-
-foreach ($accounts as $account) {
-    echo "{$account->Name}:\n";
-    echo "  Contacts: {$account->contacts_count}\n";
-    echo "  Opportunities: {$account->opportunities_count}\n";
-    echo "  Cases: {$account->cases_count}\n";
-}
-
-// Count with conditions
-$accounts = Account::withCount([
-    'opportunities' => function ($query) {
-        $query->where('StageName', 'Closed Won');
-    }
-])->get();
+$contactCount = $account->contacts()->count();
+$wonCount = $account->opportunities()->where('StageName', 'Closed Won')->count();
 ```
+
+To count children for a list of parents without N+1 queries, eager load the relationship and count in PHP:
+
+```php
+$accounts = Account::with(['contacts' => fn ($q) => $q->select(['Id', 'AccountId'])])->get();
+
+foreach ($accounts as $account) {
+    echo "{$account->Name}: {$account->contacts->count()} contacts\n";
+}
+```
+
+For grouped counts across many records, use a raw `GROUP BY` query through `SalesforceAdapter` (see [Querying](querying.md#raw-soql-queries)).
 
 ## Relationship Methods
 
@@ -545,17 +544,18 @@ class SalesController
 
     public function salesReport()
     {
-        // Get accounts with aggregated data
-        $accounts = Account::with(['opportunities', 'contacts'])
-            ->withCount([
-                'opportunities',
-                'opportunities as won_opportunities_count' => function ($query) {
-                    $query->where('StageName', 'Closed Won');
-                }
-            ])
-            ->get();
+        // Eager load, then count in PHP (withCount() is not supported in SOQL)
+        $accounts = Account::with(['opportunities', 'contacts'])->get();
 
-        return view('sales.report', compact('accounts'));
+        $report = $accounts->map(fn ($account) => [
+            'account' => $account,
+            'opportunity_count' => $account->opportunities->count(),
+            'won_opportunity_count' => $account->opportunities
+                ->where('StageName', 'Closed Won')
+                ->count(),
+        ]);
+
+        return view('sales.report', compact('report'));
     }
 }
 ```
@@ -611,11 +611,14 @@ class Contact extends SalesforceModel
 }
 ```
 
-### 4. Use withCount for Counts
+### 4. Count Eager-Loaded Relations for Lists
 
 ```php
-// Good - Single query with count
-$accounts = Account::withCount('contacts')->get();
+// Good - Two queries total, counted in PHP
+$accounts = Account::with(['contacts' => fn ($q) => $q->select(['Id', 'AccountId'])])->get();
+foreach ($accounts as $account) {
+    $count = $account->contacts->count();
+}
 
 // Bad - Separate query for each count
 $accounts = Account::all();

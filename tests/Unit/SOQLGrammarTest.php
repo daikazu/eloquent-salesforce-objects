@@ -231,6 +231,27 @@ describe('SOQLBuilder — whereColumn()', function () {
         expect($caught)->not->toBeNull();
         expect($caught->getMessage())->toContain('SOQL');
     });
+
+    it('suggests a whereIn semi-join rather than unsupported whereHas/has', function () {
+        $caught = null;
+
+        try {
+            Account::query()->whereColumn('Name', '=', 'Industry');
+        } catch (InvalidArgumentException $e) {
+            $caught = $e;
+        }
+
+        expect($caught->getMessage())
+            ->toContain("whereIn('Id'")
+            ->not->toContain('Use relationship constraints');
+    });
+});
+
+describe('SOQLBuilder — relationship existence queries', function () {
+    it('throws for whereHas() because it compiles to a column comparison', function () {
+        expect(fn () => Account::whereHas('contacts', fn ($q) => $q->where('Email', 'x'))->get(['Id']))
+            ->toThrow(InvalidArgumentException::class);
+    });
 });
 
 describe('SOQLBuilder — allColumns()', function () {

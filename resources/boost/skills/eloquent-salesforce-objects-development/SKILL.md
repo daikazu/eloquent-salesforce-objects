@@ -123,6 +123,13 @@ Account::whereIn('Id', fn ($q) => $q->select('AccountId')
     ->from('Contact')
     ->where('Email', 'like', '%@gmail.com'))
     ->get();
+
+// Accounts with no contacts (replaces doesntHave)
+Account::whereNotIn('Id', fn ($q) => $q->select('AccountId')->from('Contact'))->get();
+
+// Filter children by a parent field with relationship dot notation
+Opportunity::where('Account.Industry', 'Technology')->get();
+Contact::where('Parent_Account__r.Region__c', 'EMEA')->get(); // custom lookup: __c becomes __r
 ```
 
 ### Pagination

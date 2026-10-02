@@ -498,7 +498,7 @@ Be aware of Salesforce SOQL limitations:
 - **Query Timeout**: Queries timeout after 120 seconds
 - **Record Limits**: Max 2000 records per query (use pagination for more)
 - **No Joins**: SOQL doesn't support traditional SQL joins (use relationships instead)
-- **No Column-to-Column Comparisons**: SOQL does not support comparing one field to another in WHERE clauses. Consequently, Eloquent's whereColumn is not supported by this package. Use relationship constraints (whereHas/has) or SOQL semi-joins instead, e.g., `Id IN (SELECT Lookup__c FROM Child__c WHERE ...)`.
+- **No Column-to-Column Comparisons**: SOQL does not support comparing one field to another in WHERE clauses. Consequently, Eloquent's whereColumn is not supported by this package. The same applies to `has()`, `whereHas()`, `doesntHave()` and `withCount()`, which compile to column comparisons. Use a semi-join instead, e.g. `->whereIn('Id', fn ($q) => $q->select('Lookup__c')->from('Child__c')->where(...))`, or relationship dot notation such as `where('Account.Industry', 'Technology')`. See [Querying Relationships](relationships.md#querying-relationships).
 
 ## Next Steps
 
