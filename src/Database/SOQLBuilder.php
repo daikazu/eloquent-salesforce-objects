@@ -14,7 +14,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class SOQLBuilder extends Builder
@@ -73,18 +72,24 @@ class SOQLBuilder extends Builder
         );
     }
 
+    /**
+     * Render the query as the SOQL string that would be sent to Salesforce.
+     *
+     * Bindings go through the same escaping as executed queries, and a bare
+     * `*` column list is expanded to the object's fields.
+     */
     public function toSql()
     {
-        $columns = implode(', ', $this->describe());
-        $query = str_replace('*', $columns, parent::toSql());
-        $query = str_replace('`', '', $query);
+        $query = $this->toBase()->clone();
 
-        $bindings = array_map(
-            fn ($value) => Str::replace("'", "\'", $value),
-            $this->getBindings()
-        );
+        if ($query->columns === null || $query->columns === ['*']) {
+            $query->columns = $this->describe();
+        }
 
-        return Str::replaceArray('?', $bindings, $query);
+        /** @var SOQLConnection $connection */
+        $connection = $query->getConnection();
+
+        return $connection->substituteBindings($query->toSql(), $query->getBindings());
     }
 
     public function getModels($columns = ['*']): array
@@ -215,8 +220,9 @@ class SOQLBuilder extends Builder
         $page = $page ?: Paginator::resolveCurrentPage($pageName);
         $perPage = $perPage ?: $this->model->getPerPage();
 
-        // Fetch one extra record to determine if there's a next page
-        $this->forPage($page, $perPage + 1);
+        // Fetch one extra record to determine if there's a next page. The offset
+        // must use $perPage, not $perPage + 1, or each page skips a record.
+        $this->offset(($page - 1) * $perPage)->limit($perPage + 1);
 
         $results = $this->get($columns);
 

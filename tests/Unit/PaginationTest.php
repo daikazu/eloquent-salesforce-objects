@@ -399,10 +399,11 @@ describe('simplePaginate method', function () {
             ],
         ]);
 
-        // Mock data query with offset for page 2
+        // Page 2 at 20 per page starts at offset 20 and fetches one extra row
         Forrest::shouldReceive('query')
             ->once()
-            ->with(Mockery::any())
+            ->with(Mockery::on(fn ($query) => str_contains($query, 'limit 21')
+                && str_contains($query, 'offset 20')))
             ->andReturn([
                 'totalSize' => 21,
                 'done'      => true,

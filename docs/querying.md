@@ -324,7 +324,8 @@ $soql = Account::where('Industry', 'Technology')
     ->toSql();
 
 echo $soql;
-// Output: SELECT Id, Name, Industry FROM Account WHERE Industry = 'Technology' ORDER BY Name ASC
+// Output (the exact SOQL that would be sent; `*` expands to every field):
+// select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, Industry, ... from Account where Industry = 'Technology' order by Name asc
 ```
 
 ### Enable Query Logging

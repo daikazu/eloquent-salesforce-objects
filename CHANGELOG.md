@@ -2,6 +2,18 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## Unreleased
+
+### Security
+
+- **Backslashes in string bindings are now escaped.** Before, only `'` was escaped, so a value ending in `\` could escape its own closing quote and let the next string binding rewrite the WHERE clause. Newlines, carriage returns and tabs are escaped too. If you were pre-escaping values passed to `where()`, stop: they are escaped for you, and pre-escaped values are now stored literally.
+
+### Fixed
+
+- **`simplePaginate()` no longer skips a record on every page.** The offset was calculated from `perPage + 1`, so page 2 at 20 per page started at row 21.
+- **A query with no results is no longer mistaken for a COUNT** when a value in its WHERE clause contains `COUNT(`. Before, it returned one phantom model.
+- **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
+
 ## v1.1.0 - 2026-05-22
 
 ### Added

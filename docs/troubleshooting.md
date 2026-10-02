@@ -201,13 +201,13 @@ php artisan salesforce:test
    echo $soql; // View generated SOQL
    ```
 
-2. **Check for special characters:**
+2. **Don't escape values yourself:**
    ```php
-   // Wrong
-   ->where('Name', "Company's Name") // Unescaped quote
+   // Correct: bindings are escaped for you (quotes, backslashes, newlines)
+   ->where('Name', "Company's Name")
 
-   // Correct
-   ->where('Name', "Company\'s Name") // Escaped quote
+   // Wrong: the backslash is escaped too, so this searches for "Company\'s Name"
+   ->where('Name', "Company\'s Name")
    ```
 
 3. **Use proper operators:**

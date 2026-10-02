@@ -105,7 +105,8 @@ Lead::where('Email', $email)->exists();
 - Use `whereDate()` for Salesforce `date` fields and plain `where()` with Carbon for `datetime` fields. SOQL rejects quoted date literals.
 - `whereNull('X')` compiles to `X = null`, which is valid SOQL.
 - `chunk()` and `cursor()` work for large result sets.
-- `toSql()` is approximate. For the exact SOQL sent, set `SALESFORCE_QUERY_LOG=true` and read `app(SalesforceAdapter::class)->queryHistory()`.
+- `toSql()` returns the SOQL that would be sent, with bindings escaped the same way. To see queries that actually ran, read `app(SalesforceAdapter::class)->queryHistory()`.
+- Bindings are escaped automatically (quotes, backslashes, newlines). Never pre-escape values passed to `where()`.
 
 ### Not supported (these throw)
 

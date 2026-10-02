@@ -389,3 +389,39 @@ describe('aggregate', function () {
         expect($result)->toBeNull();
     });
 });
+
+describe('aggregate detection', function () {
+    it('does not treat a plain query as a COUNT when a value contains COUNT(', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn([
+            'fields' => [['name' => 'Id'], ['name' => 'Name']],
+        ]);
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->andReturn([
+                'totalSize' => 0,
+                'done'      => true,
+                'records'   => [],
+            ]);
+
+        $results = Account::where('Name', 'COUNT(x)')->get();
+
+        expect($results)->toHaveCount(0);
+    });
+
+    it('returns null for an AVG over an empty set even when a value contains COUNT()', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        Forrest::shouldReceive('query')
+            ->with("select AVG(AnnualRevenue) from Account where Name = 'COUNT()'")
+            ->once()
+            ->andReturn([
+                'totalSize' => 0,
+                'done'      => true,
+                'records'   => [],
+            ]);
+
+        expect(Account::where('Name', 'COUNT()')->avg('AnnualRevenue'))->toBeNull();
+    });
+});

@@ -47,7 +47,7 @@ class SOQLConnection extends Connection
     public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): array
     {
         return $this->run($query, $bindings, function (string $query, array $bindings): array {
-            $statement = $this->prepare($query, $bindings);
+            $statement = $this->substituteBindings($query, $bindings);
             return $this->executeQuery($statement);
         });
     }
@@ -79,17 +79,12 @@ class SOQLConnection extends Connection
             // Collect all records, handling pagination
             $records = $result['records'] ?? [];
 
-            // Handle aggregate queries that return empty records but have totalSize
-            // Salesforce returns simple COUNT() results in totalSize instead of records
-            // For other aggregates (SUM, AVG, MIN, MAX), empty records means null
-            if (empty($records) && isset($result['totalSize']) && $this->isAggregateQuery($statement)) {
-                // Only use totalSize for COUNT queries
-                if (stripos($statement, 'COUNT(') !== false) {
-                    $records = [
-                        ['aggregate' => $result['totalSize']],
-                    ];
-                }
-                // For other aggregates, leave records empty so aggregate() returns null
+            // COUNT() returns its result in totalSize with no records. Other aggregates
+            // (SUM, AVG, MIN, MAX) with no records mean null, so leave them empty.
+            if (empty($records) && isset($result['totalSize']) && $this->isCountQuery($statement)) {
+                $records = [
+                    ['aggregate' => $result['totalSize']],
+                ];
             }
 
             while (isset($result['nextRecordsUrl'])) {
@@ -132,7 +127,7 @@ class SOQLConnection extends Connection
                 return [];
             }
 
-            $statement = $this->prepare($query, $bindings);
+            $statement = $this->substituteBindings($query, $bindings);
 
             if ($this->queryAll) {
                 return $this->adapter->queryAll($statement);
@@ -184,14 +179,30 @@ class SOQLConnection extends Connection
                 continue;
             }
 
-            // Escape single quotes in string values to prevent SOQL injection
-            // SOQL uses backslash-escaped single quotes: O'Brien -> O\'Brien
+            // Escape string values to prevent SOQL injection. Backslashes must be
+            // escaped first, or a trailing "\" would swallow the closing quote.
             if (is_string($value)) {
-                $bindings[$key] = str_replace("'", "\\'", $value);
+                $bindings[$key] = self::escapeSoqlString($value);
             }
         }
 
         return $bindings;
+    }
+
+    /**
+     * Escape a string for use inside a quoted SOQL literal.
+     *
+     * O'Brien -> O\'Brien, C:\path -> C:\\path, newlines -> \n
+     */
+    public static function escapeSoqlString(string $value): string
+    {
+        return strtr($value, [
+            '\\' => '\\\\',
+            "'"  => "\\'",
+            "\n" => '\\n',
+            "\r" => '\\r',
+            "\t" => '\\t',
+        ]);
     }
 
     /**
@@ -229,7 +240,10 @@ class SOQLConnection extends Connection
         return $result;
     }
 
-    private function prepare(string $query, array $bindings): string
+    /**
+     * Replace the ? placeholders in a compiled query with escaped binding values.
+     */
+    public function substituteBindings(string $query, array $bindings): string
     {
         $bindings = $this->prepareBindings($bindings);
 
@@ -261,15 +275,13 @@ class SOQLConnection extends Connection
     }
 
     /**
-     * Check if a query is an aggregate query
+     * Check if a query is a COUNT aggregate, as compiled by SOQLGrammar::compileAggregate().
+     *
+     * Only the start of the statement is checked, so values in the WHERE clause
+     * that happen to contain "COUNT(" are not mistaken for an aggregate.
      */
-    private function isAggregateQuery(string $query): bool
+    private function isCountQuery(string $query): bool
     {
-        $query = strtoupper($query);
-        return stripos($query, 'COUNT(') !== false ||
-               stripos($query, 'SUM(') !== false ||
-               stripos($query, 'AVG(') !== false ||
-               stripos($query, 'MIN(') !== false ||
-               stripos($query, 'MAX(') !== false;
+        return preg_match('/^\s*select\s+count\(/i', $query) === 1;
     }
 }
