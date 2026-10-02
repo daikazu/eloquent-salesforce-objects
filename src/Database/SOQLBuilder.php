@@ -314,6 +314,12 @@ class SOQLBuilder extends Builder
         $query->limit = $relation instanceof SOQLHasOne ? 1 : $limit;
 
         $query->columns = $child->resolveSelectColumns($query->columns ?? ['*']);
+
+        // Relation::match() pairs children with parents by the foreign key, so always select it
+        if (! in_array($relation->getForeignKeyName(), $query->columns, true)) {
+            $query->columns[] = $relation->getForeignKeyName();
+        }
+
         $query->from = $relationshipName;
 
         /** @var SOQLConnection $connection */
@@ -330,6 +336,10 @@ class SOQLBuilder extends Builder
     /**
      * Turn the nested subquery results on each parent into loaded relations.
      *
+     * The children go through the same steps as Laravel's own eager load (nested eager
+     * loads, afterQuery callbacks, then Relation::match()), so chaperone(), withDefault()
+     * and afterQuery() behave as they do for a separate query.
+     *
      * @param  array<int, Model>  $models
      * @param  array<string, array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}>  $subqueries
      * @return array<int, Model>
@@ -337,35 +347,32 @@ class SOQLBuilder extends Builder
     protected function hydrateChildSubqueries(array $models, array $subqueries): array
     {
         foreach ($subqueries as $name => ['relation' => $relation, 'child' => $child, 'key' => $key]) {
-            $relation->initRelation($models, $name);
-
-            $children = [];
+            $rows = [];
 
             foreach ($models as $model) {
                 $attributes = $model->getAttributes();
-                $rows = $attributes[$key] ?? null;
+
+                if (is_array($attributes[$key] ?? null)) {
+                    array_push($rows, ...$attributes[$key]);
+                }
 
                 // The raw nested result isn't a field; keep it out of attributes and saves
                 unset($attributes[$key]);
                 $model->setRawAttributes($attributes, true);
-
-                if (! is_array($rows) || $rows === []) {
-                    continue;
-                }
-
-                $related = $child->hydrate($rows)->all();
-
-                $model->setRelation($name, $relation instanceof SOQLHasOne
-                    ? $related[0]
-                    : $relation->getRelated()->newCollection($related));
-
-                array_push($children, ...$related);
             }
+
+            $children = $child->hydrate($rows)->all();
 
             // Nested relations ("opportunities.lineItems") load on the children in one go
             if ($children !== []) {
-                $child->eagerLoadRelations($children);
+                $children = $child->eagerLoadRelations($children);
             }
+
+            $models = $relation->match(
+                $relation->initRelation($models, $name),
+                $child->applyAfterQueryCallbacks($relation->getRelated()->newCollection($children)),
+                $name
+            );
         }
 
         return $models;

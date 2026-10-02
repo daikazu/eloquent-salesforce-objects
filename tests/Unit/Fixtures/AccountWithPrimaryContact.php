@@ -16,4 +16,9 @@ class AccountWithPrimaryContact extends SalesforceModel
     {
         return $this->hasOne(Contact::class, 'AccountId');
     }
+
+    public function primaryContactOrDefault(): HasOne
+    {
+        return $this->hasOne(Contact::class, 'AccountId')->withDefault(['LastName' => 'None']);
+    }
 }

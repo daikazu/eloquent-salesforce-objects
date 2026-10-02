@@ -343,7 +343,7 @@ describe('with() — subquery strategy', function () {
             ->where('LastName', '!=', "O'Brien")
             ->orderBy('LastName')])->get();
 
-        expect($queries[0])->toContain("(select Id, LastName from Contacts where LastName != 'O\\'Brien' order by LastName asc)");
+        expect($queries[0])->toContain("(select Id, LastName, AccountId from Contacts where LastName != 'O\\'Brien' order by LastName asc)");
     });
 
     it('applies limit() per parent', function () {
@@ -351,7 +351,7 @@ describe('with() — subquery strategy', function () {
 
         Account::with(['contacts' => fn ($q) => $q->select(['Id'])->orderBy('LastName')->limit(2)])->get();
 
-        expect($queries[0])->toContain('(select Id from Contacts order by LastName asc limit 2)');
+        expect($queries[0])->toContain('(select Id, AccountId from Contacts order by LastName asc limit 2)');
         expect($queries[0])->not->toContain('row_number');
     });
 
@@ -361,7 +361,7 @@ describe('with() — subquery strategy', function () {
         $accounts = AccountWithPrimaryContact::with(['primaryContact' => fn ($q) => $q->select(['Id', 'LastName'])])->get()->keyBy('Id');
 
         expect($queries)->toHaveCount(1);
-        expect($queries[0])->toContain('(select Id, LastName from Contacts limit 1)');
+        expect($queries[0])->toContain('(select Id, LastName, AccountId from Contacts limit 1)');
         expect($accounts['001A']->primaryContact->LastName)->toBe('Adams');
         expect($accounts['001C']->primaryContact)->toBeNull();
     });
@@ -376,13 +376,13 @@ describe('with() — subquery strategy', function () {
         $opportunity = Opportunity::with(['lineItems' => fn ($q) => $q->select(['Id', 'Name'])])->get()->first();
 
         expect($queries)->toHaveCount(1);
-        expect($queries[0])->toContain('(select Id, Name from Line_Items__r) from Opportunity');
+        expect($queries[0])->toContain('(select Id, Name, Opportunity__c from Line_Items__r) from Opportunity');
         expect($opportunity->lineItems->pluck('Name')->all())->toBe(['Widget']);
     });
 
     it('loads several relationships in one query', function () {
         $queries = fakeSubquerySalesforce([
-            ['Id' => '001A', 'Contacts' => nested([['Id' => '003A']]), 'Opportunities' => nested([['Id' => '006A'], ['Id' => '006B']])],
+            ['Id' => '001A', 'Contacts' => nested([['Id' => '003A', 'AccountId' => '001A']]), 'Opportunities' => nested([['Id' => '006A', 'AccountId' => '001A'], ['Id' => '006B', 'AccountId' => '001A']])],
         ]);
 
         $account = Account::select(['Id'])->with([
@@ -391,7 +391,7 @@ describe('with() — subquery strategy', function () {
         ])->get()->first();
 
         expect($queries)->toHaveCount(1);
-        expect($queries[0])->toBe('select Id, (select Id from Contacts), (select Id from Opportunities) from Account');
+        expect($queries[0])->toBe('select Id, (select Id, AccountId from Contacts), (select Id, AccountId from Opportunities) from Account');
         expect($account->contacts)->toHaveCount(1);
         expect($account->opportunities)->toHaveCount(2);
     });
@@ -437,11 +437,11 @@ describe('with() — subquery strategy', function () {
             ['Id' => '001A', 'Contacts' => [
                 'done'           => false,
                 'nextRecordsUrl' => '/services/data/v64.0/query/01gA-2',
-                'records'        => [['Id' => '003A']],
+                'records'        => [['Id' => '003A', 'AccountId' => '001A']],
             ]],
         ]);
         Forrest::shouldReceive('next')->once()->with('/services/data/v64.0/query/01gA-2')
-            ->andReturn(['done' => true, 'records' => [['Id' => '003B'], ['Id' => '003C']]]);
+            ->andReturn(['done' => true, 'records' => [['Id' => '003B', 'AccountId' => '001A'], ['Id' => '003C', 'AccountId' => '001A']]]);
 
         $account = Account::select(['Id'])->with('contacts')->get()->first();
 
@@ -474,5 +474,49 @@ describe('with() — subquery strategy', function () {
         expect(Account::with('contacts')->exists())->toBeTrue();
         expect($queries)->toHaveCount(1);
         expect($queries[0])->toBe('select Id from Account limit 1');
+    });
+});
+
+describe('with() — subquery strategy honours relation features', function () {
+    beforeEach(function () {
+        Cache::flush();
+    });
+
+    it('always selects the foreign key, so children can be matched to their parent', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        Account::select(['Id'])->with(['contacts' => fn ($q) => $q->select(['Id'])])->get();
+
+        expect($queries[0])->toBe('select Id, (select Id, AccountId from Contacts) from Account');
+    });
+
+    it('applies chaperone(), setting each child\'s parent without another query', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        $account = Account::with(['contacts' => fn ($q) => $q->chaperone('account')])->get()->first();
+        $contact = $account->contacts->first();
+
+        expect($queries)->toHaveCount(1);
+        expect($contact->relationLoaded('account'))->toBeTrue();
+        expect($contact->account)->toBe($account);
+    });
+
+    it('applies withDefault() to a hasOne with no child', function () {
+        fakeSubquerySalesforce(accountsWithContacts());
+
+        $accounts = AccountWithPrimaryContact::with('primaryContactOrDefault')->get()->keyBy('Id');
+
+        expect($accounts['001A']->primaryContactOrDefault->LastName)->toBe('Adams');
+        expect($accounts['001C']->primaryContactOrDefault->LastName)->toBe('None');
+    });
+
+    it('runs afterQuery() callbacks from the with() closure', function () {
+        fakeSubquerySalesforce(accountsWithContacts());
+
+        $account = Account::with(['contacts' => fn ($q) => $q->afterQuery(
+            fn ($contacts) => $contacts->each(fn ($contact) => $contact->setAttribute('Tagged', true))
+        )])->get()->first();
+
+        expect($account->contacts->every(fn ($contact) => $contact->Tagged === true))->toBeTrue();
     });
 });
