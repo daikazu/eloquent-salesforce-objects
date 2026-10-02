@@ -12,6 +12,28 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 ## Authentication Issues
 
+### "SOAP API login()" Warning or `INSUFFICIENT_ACCESS` on Login
+
+**Problem:** The log shows `Salesforce authentication is using SOAP API login()`, `php artisan salesforce:test` prints the same warning, or authentication fails with `INSUFFICIENT_ACCESS`.
+
+**Cause:** `forrest.authentication` is set to `UserPasswordSoap`, which authenticates with SOAP API `login()` instead of OAuth. Salesforce is retiring `login()` in API versions 31.0 through 64.0 with Summer '27, disables it by default in orgs created in Summer '26 or later, and from Winter '27 rejects it with `INSUFFICIENT_ACCESS` unless the user has the **Use Any API Auth** permission.
+
+**Solution:** Switch to an OAuth flow, preferably Client Credentials:
+
+```env
+SF_AUTH_METHOD=ClientCredentials
+SF_CONSUMER_KEY=your_consumer_key
+SF_CONSUMER_SECRET=your_consumer_secret
+SF_LOGIN_URL=https://your-domain.my.salesforce.com
+```
+
+Enable the Client Credentials flow on your External Client App (or Connected App) and assign it a "Run As" user, then clear cached tokens and re-test:
+
+```bash
+php artisan cache:clear
+php artisan salesforce:test
+```
+
 ### "Authentication Failed" Error
 
 **Problem:** Unable to authenticate with Salesforce.

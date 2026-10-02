@@ -40,7 +40,7 @@ This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce]
 composer require daikazu/eloquent-salesforce-objects
 ```
 
-Configure [omniphx/forrest](https://github.com/omniphx/forrest) with your Salesforce credentials, then scaffold a model:
+Configure [omniphx/forrest](https://github.com/omniphx/forrest) with your Salesforce credentials using an OAuth flow such as `ClientCredentials` (avoid `UserPasswordSoap`, which relies on the SOAP API `login()` call Salesforce is retiring; see [Installation](docs/installation.md#choose-an-oauth-authentication-flow)), then scaffold a model:
 
 ```bash
 php artisan make:salesforce-model Account

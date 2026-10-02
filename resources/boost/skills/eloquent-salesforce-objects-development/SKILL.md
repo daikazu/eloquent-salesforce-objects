@@ -14,6 +14,8 @@ The package gives Salesforce objects an Eloquent interface. Queries compile to S
 ## Setup
 
 - Credentials live in Forrest's config (`config/forrest.php`, `SF_CONSUMER_KEY`, `SF_CONSUMER_SECRET`, `SF_LOGIN_URL`, `SF_USERNAME`, `SF_PASSWORD`, `SF_AUTH_METHOD`). The package's own config holds no credentials.
+- Authenticate with an OAuth flow: `SF_AUTH_METHOD=ClientCredentials` (recommended for server-to-server), `OAuthJWT`, or `WebServer` for interactive user login. Create the app in Salesforce as an External Client App.
+- **Never use or recommend `UserPasswordSoap`.** It calls SOAP API `login()`, which Salesforce is retiring in API versions 31.0-64.0 with Summer '27 and already disables by default in new orgs. The package logs a warning, and `salesforce:test` reports it, when that flow is configured.
 - Use Forrest `storage.type = 'cache'` for apps that call Salesforce from queues, scheduled jobs, or Artisan commands. Session storage only works inside a web request.
 - Package config: `php artisan vendor:publish --tag="eloquent-salesforce-objects-config"` creates `config/eloquent-salesforce-objects.php`.
 - Verify the connection: `php artisan salesforce:test`.

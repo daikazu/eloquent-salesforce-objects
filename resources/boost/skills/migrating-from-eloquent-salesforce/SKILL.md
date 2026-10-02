@@ -69,7 +69,8 @@ Then delete the `soql` entry from `config/database.php` and delete `config/eloqu
 
 The old package registered `GET /login/salesforce` and `GET /login/salesforce/callback`, plus `POST /api/syncObject/{sfid}` for two-way sync. Removing it removes these routes.
 
-- Apps using the `UserPassword`, `UserPasswordSoap`, `ClientCredentials` or `OAuthJWT` flow need nothing. The new package authenticates automatically on the first API call.
+- Apps using the `UserPassword`, `ClientCredentials` or `OAuthJWT` flow need nothing. The new package authenticates automatically on the first API call.
+- Apps using `UserPasswordSoap` must switch to an OAuth flow, preferably `ClientCredentials`. That flow calls SOAP API `login()`, which Salesforce is retiring in API versions 31.0-64.0 with Summer '27; it is already disabled by default in orgs created in Summer '26 or later. Never recommend `UserPasswordSoap` or SOAP `login()`.
 - Apps using the `WebServer` flow must define their own routes:
 
 ```php

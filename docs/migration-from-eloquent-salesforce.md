@@ -128,7 +128,8 @@ Once everything is moved, delete the `soql` entry from `config/database.php` and
 
 The old package registered `GET /login/salesforce` and `GET /login/salesforce/callback` (plus `POST /api/syncObject/{sfid}` for two-way sync). Removing the package removes these routes.
 
-- **`UserPassword`, `UserPasswordSoap`, `ClientCredentials` or `OAuthJWT` flows:** nothing to do. The new package authenticates automatically on the first API call.
+- **`UserPassword`, `ClientCredentials` or `OAuthJWT` flows:** nothing to do. The new package authenticates automatically on the first API call.
+- **`UserPasswordSoap` flow:** switch to an OAuth flow (preferably `ClientCredentials`) as part of the migration. It calls SOAP API `login()`, which Salesforce is retiring with Summer '27 and already disables by default in new orgs. The new package logs a warning when it's configured. See [Choose an OAuth Authentication Flow](installation.md#choose-an-oauth-authentication-flow).
 - **`WebServer` flow:** define the routes yourself:
 
 ```php
@@ -735,6 +736,7 @@ Features available in this package that weren't in the old one:
 - [ ] Migrate settings from `config/eloquent_sf.php` to `config/eloquent-salesforce-objects.php`
 - [ ] Decide on `SALESFORCE_THROW_EXCEPTIONS` (set `true` to keep the old throwing behavior)
 - [ ] Add your own `/login/salesforce` routes if you use the WebServer flow
+- [ ] If `forrest.authentication` is `UserPasswordSoap`, switch to an OAuth flow (SOAP API `login()` is being retired)
 - [ ] Remove the `soql` connection from `config/database.php` and delete `config/eloquent_sf.php`
 - [ ] Run `php artisan salesforce:test`
 
