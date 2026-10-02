@@ -92,3 +92,9 @@ describe('query increment / decrement', function () {
         'decrementEach' => ['decrementEach', [['NumberOfEmployees' => 1]]],
     ]);
 });
+
+it('decrementEach() saves several fields at once', function () {
+    expectAccountPatch(['NumberOfEmployees' => 8, 'AnnualRevenue' => 100.0]);
+
+    existingAccount()->decrementEach(['NumberOfEmployees' => 2, 'AnnualRevenue' => 0.5]);
+});

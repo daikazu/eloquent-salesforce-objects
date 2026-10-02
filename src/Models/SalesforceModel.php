@@ -100,6 +100,27 @@ class SalesforceModel extends Model
     }
 
     /**
+     * Public so a model's incrementEach() reaches here on every Laravel version: Laravel 12
+     * forwards it to the query builder (which throws), and 13 calls it through __call().
+     *
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    public function incrementEach(array $columns, array $extra = []): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, true);
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    public function decrementEach(array $columns, array $extra = []): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, false);
+    }
+
+    /**
      * @param  array<string, float|int>  $columns
      * @param  array<string, mixed>  $extra
      */
