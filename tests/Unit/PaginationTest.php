@@ -572,3 +572,54 @@ describe('pagination edge cases', function () {
         expect($paginator->count())->toBe(10);
     });
 });
+
+describe('default page size', function () {
+    it('uses the default_page_size config when no per-page value is given', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $paginator = Account::query()->paginate(null, ['Id'], 'page', 1, 0);
+
+        expect($paginator->perPage())->toBe(50);
+    });
+
+    it('defaults to 200 per page out of the box', function () {
+        expect((new Account)->getPerPage())->toBe(200);
+    });
+
+    it('lets a model override the page size with $perPage', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $model = new class extends Account
+        {
+            protected $perPage = 10;
+        };
+
+        expect($model->getPerPage())->toBe(10);
+    });
+
+    it('respects setPerPage() at runtime', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        expect((new Account)->setPerPage(30)->getPerPage())->toBe(30);
+    });
+
+    it('prefers an explicit per-page argument', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $paginator = Account::query()->paginate(25, ['Id'], 'page', 1, 0);
+
+        expect($paginator->perPage())->toBe(25);
+    });
+
+    it('applies the config to simplePaginate', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 40]);
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(fn ($soql) => str_contains($soql, 'limit 41')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        expect(Account::query()->simplePaginate(null, ['Id'])->perPage())->toBe(40);
+    });
+});

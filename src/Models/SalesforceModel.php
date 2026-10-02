@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
+use ReflectionProperty;
 
 class SalesforceModel extends Model
 {
@@ -29,6 +30,8 @@ class SalesforceModel extends Model
     const string UPDATED_AT = 'LastModifiedDate';
     const string CREATED_AT = 'CreatedDate';
     const string DATED_FORMAT = 'Y-m-d\TH:i:s.vO';
+
+    private const int ELOQUENT_DEFAULT_PER_PAGE = 15;
 
     /**
      * The default columns to select when querying this model.
@@ -130,6 +133,23 @@ class SalesforceModel extends Model
     public function getDefaultColumns(): ?array
     {
         return $this->defaultColumns;
+    }
+
+    /**
+     * Get the number of models to return per page.
+     *
+     * A model that declares its own $perPage, or calls setPerPage(), keeps that value;
+     * otherwise the `default_page_size` config applies instead of Eloquent's default of 15.
+     */
+    public function getPerPage(): int
+    {
+        $declaredOnSubclass = (new ReflectionProperty($this, 'perPage'))->getDeclaringClass()->getName() !== Model::class;
+
+        if ($declaredOnSubclass || $this->perPage !== self::ELOQUENT_DEFAULT_PER_PAGE) {
+            return parent::getPerPage();
+        }
+
+        return (int) config('eloquent-salesforce-objects.default_page_size', 200);
     }
 
     /**

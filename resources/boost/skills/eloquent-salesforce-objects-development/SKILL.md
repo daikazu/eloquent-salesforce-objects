@@ -141,7 +141,7 @@ Lead::orderBy('LastName')->simplePaginate(25);
 
 - SOQL `OFFSET` caps at 2000, so the paginator total is capped at 2000.
 - `paginate()` and `simplePaginate()` select **every** field unless you pass columns. They do not apply `$defaultColumns`.
-- The default page size is the model's `$perPage` (15).
+- Without a page size, pagination uses the `default_page_size` config (`SALESFORCE_PAGE_SIZE`, 200 by default). A model's own `protected $perPage` overrides it.
 
 ## Relationships
 
