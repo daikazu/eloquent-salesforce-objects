@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
+use InvalidArgumentException;
 use ReflectionProperty;
 
 class SalesforceModel extends Model
@@ -70,6 +71,51 @@ class SalesforceModel extends Model
         $fields = array_merge($this->readOnly, $exclude);
 
         return Arr::except($this->attributes, $fields);
+    }
+
+    /**
+     * Salesforce has no atomic increment, so compute the new value and save it.
+     * Not atomic: a concurrent change to the same field can be overwritten.
+     *
+     * @param  string  $column
+     * @param  float|int  $amount
+     * @param  array<string, mixed>  $extra
+     * @param  string  $method
+     */
+    protected function incrementOrDecrement($column, $amount, $extra, $method): int | false
+    {
+        return $this->saveIncrementedValues([$column => $amount], $extra, $method === 'increment');
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    protected function incrementOrDecrementEach(array $columns, array $extra, string $method): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, $method === 'incrementEach');
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    private function saveIncrementedValues(array $columns, array $extra, bool $increment): int | false
+    {
+        if (! $this->exists) {
+            throw new InvalidArgumentException(
+                'Cannot increment a Salesforce record that has not been saved. '
+                . 'Load it first; query-level increment() is not supported because Salesforce has no atomic increment.'
+            );
+        }
+
+        foreach ($columns as $column => $amount) {
+            $this->{$column} = $this->{$column} + ($increment ? $amount : -$amount);
+        }
+
+        $this->forceFill($extra);
+
+        return $this->save() ? 1 : false;
     }
 
     /**

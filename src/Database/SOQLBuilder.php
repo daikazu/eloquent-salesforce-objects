@@ -645,6 +645,37 @@ class SOQLBuilder extends Builder
         return $this->update([$this->model->getUpdatedAtColumn() => $time]);
     }
 
+    public const string INCREMENT_UNSUPPORTED = 'Salesforce has no atomic increment, so query-level increment()/decrement() '
+        . 'is not supported. Load the records and call $model->increment() on each (not atomic), or use update() with explicit values.';
+
+    /**
+     * @param  string  $column
+     * @param  float|int  $amount
+     */
+    public function increment($column, $amount = 1, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    /**
+     * @param  string  $column
+     * @param  float|int  $amount
+     */
+    public function decrement($column, $amount = 1, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    public function incrementEach(array $columns, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    public function decrementEach(array $columns, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
     /**
      * Salesforce models have no soft-delete column to bypass, so this deletes like delete().
      */
