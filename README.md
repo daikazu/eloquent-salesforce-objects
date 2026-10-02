@@ -1,6 +1,5 @@
 <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="art/header-dark.png">
-   <img alt="Logo for Eloquent Salesforce Objects" src="art/header-light.png">
+   <img alt="Logo for Eloquent Salesforce Objects" src="art/header.png">
 </picture>
 
 # Eloquent Salesforce Objects
