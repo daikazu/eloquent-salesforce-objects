@@ -1,5 +1,6 @@
 <?php
 
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\LazyCollection;
@@ -340,4 +341,35 @@ describe('executeQuery() exception handling', function () {
         expect($results)->toBeEmpty();
     });
 
+});
+
+describe('cursor() bookkeeping and errors', function () {
+    it('records the query in the adapter query history', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        mockAccountDescribe();
+        Forrest::shouldReceive('query')->once()->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        $history = app(AdapterInterface::class)->queryHistory();
+        $before = $history->count();
+
+        iterator_to_array(Account::cursor());
+
+        expect($history->count())->toBe($before + 1);
+        expect($history->last())->toStartWith('select ');
+    });
+
+    it('logs and yields nothing on failure when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        mockAccountDescribe();
+        Forrest::shouldReceive('query')->once()->andThrow(new Exception('Cursor query failed'));
+
+        expect(iterator_to_array(Account::cursor()))->toBe([]);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn ($message) => str_contains($message, 'Cursor query failed'));
+    });
 });

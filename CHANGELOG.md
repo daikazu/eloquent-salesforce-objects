@@ -15,6 +15,10 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 - **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
 - **One adapter everywhere.** `AdapterInterface` is now a singleton that resolves to the same `SalesforceAdapter` instance. Queries, saves, relationship subqueries and `SalesforceBatch` all use it, so binding your own `AdapterInterface` replaces it for all of them. Before, reads always used the concrete `SalesforceAdapter`.
 - **Compiling a `where` on a `SOQLGrammar` without a model no longer throws** an uninitialized-property error.
+- **`cursor()` now selects the same columns as `get()`.** On a model with `$defaultColumns` it adds `CreatedDate`, `LastModifiedDate` and `IsDeleted` like `get()` does. On a model without them, or after `allColumns()`, it expands to every field instead of sending `select *`, which Salesforce rejects.
+- **`cursor()` records its query in `queryHistory()`** and, with `throw_exceptions` off, logs a failed query and yields nothing instead of throwing.
+- **Failed bulk `insert()` / `delete()` chunks are logged** when `throw_exceptions` is off. Before, they were skipped without any log entry.
+- **Bulk `delete()` selects only `Id`** to find the records to delete, instead of fetching every column.
 
 ### Changed
 

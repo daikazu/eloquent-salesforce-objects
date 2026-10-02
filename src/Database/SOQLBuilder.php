@@ -6,6 +6,7 @@ namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use BadMethodCallException;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
+use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -18,8 +19,9 @@ use InvalidArgumentException;
 
 class SOQLBuilder extends Builder
 {
+    use LogsSalesforceErrors;
+
     protected array $noSoftDeletes;
-    protected bool $throwExceptions;
     protected int $bulkOperationSize;
     protected bool $shouldIgnoreDefaults = false;
     private SOQLGrammar $soqlGrammar;
@@ -38,7 +40,6 @@ class SOQLBuilder extends Builder
 
         // Cache config values for performance
         $this->noSoftDeletes = config('eloquent-salesforce-objects.no_soft_deletes', ['User']);
-        $this->throwExceptions = config('eloquent-salesforce-objects.throw_exceptions', true);
         $this->bulkOperationSize = config('eloquent-salesforce-objects.bulk_operation_size', 200);
     }
 
@@ -94,63 +95,46 @@ class SOQLBuilder extends Builder
 
     public function getModels($columns = ['*']): array
     {
-        // Check if we should use default columns
-        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
-        $useDefaults = $defaultColumns !== null && in_array('*', $columns) && ! $this->shouldIgnoreDefaults;
-
-        if ($useDefaults) {
-            $cols = $defaultColumns;
-
-            // Always ensure Id is included
-            if (! in_array('Id', $cols)) {
-                array_unshift($cols, 'Id');
-            }
-
-            // Make sure the required timestamp columns are included
-            if (! in_array('CreatedDate', $cols)) {
-                $cols[] = 'CreatedDate';
-            }
-
-            if (! in_array('LastModifiedDate', $cols)) {
-                $cols[] = 'LastModifiedDate';
-            }
-
-            // Make sure soft delete column is included if model supports soft deletes
-            $supportsSoftDeletes = ! in_array($this->model->getTable(), $this->noSoftDeletes);
-
-            if ($supportsSoftDeletes && ! in_array('IsDeleted', $cols)) {
-                $cols[] = 'IsDeleted';
-            }
-
-            // Resolve the final columns through adapter
-            $cols = $this->getSalesForceColumns($cols);
-        } else {
-            $cols = $this->getSalesForceColumns($columns);
+        if (in_array('*', $columns)) {
+            $columns = $this->resolveDefaultColumns() ?? $columns;
         }
 
-        return parent::getModels($cols);
+        return parent::getModels($this->getSalesForceColumns($columns));
     }
 
     public function cursor()
     {
-        // Use defaultColumns if set and no explicit columns specified
-        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
-        $shouldUseDefaults = $defaultColumns !== null &&
-                           (! $this->query->columns || in_array('*', $this->query->columns)) &&
-                           ! $this->shouldIgnoreDefaults;
+        $columns = $this->query->columns;
 
-        if ($shouldUseDefaults) {
-            $cols = $defaultColumns;
-
-            // Always ensure Id is included
-            if (! in_array('Id', $cols)) {
-                array_unshift($cols, 'Id');
-            }
-
-            $this->query->columns = $cols;
+        // SOQL has no "select *", so expand it here; the connection's cursor() won't
+        if ($columns === null || in_array('*', $columns)) {
+            $this->query->columns = $this->getSalesForceColumns($this->resolveDefaultColumns() ?? ['*']);
         }
 
         return parent::cursor();
+    }
+
+    /**
+     * The model's default columns plus the columns every query needs, or null
+     * when the model has none or allColumns() was called.
+     *
+     * @return array<int, string>|null
+     */
+    protected function resolveDefaultColumns(): ?array
+    {
+        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
+
+        if ($defaultColumns === null || $this->shouldIgnoreDefaults) {
+            return null;
+        }
+
+        $required = ['CreatedDate', 'LastModifiedDate'];
+
+        if (! in_array($this->model->getTable(), $this->noSoftDeletes)) {
+            $required[] = 'IsDeleted';
+        }
+
+        return array_values(array_unique(['Id', ...$defaultColumns, ...$required]));
     }
 
     /**
@@ -265,11 +249,8 @@ class SOQLBuilder extends Builder
                     $results->push($result);
                 }
             } catch (Exception $e) {
-                // Log and handle exception based on config
-                if ($this->throwExceptions) {
-                    throw $e;
-                }
-                // Continue to next chunk if not throwing
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk insert');
             }
         }
 
@@ -332,20 +313,18 @@ class SOQLBuilder extends Builder
      */
     public function delete($allOrNone = false): int
     {
-        $models = collect($this->getModels());
+        // Only the Ids are needed, so don't fetch every column
+        $ids = $this->toBase()->pluck('Id');
 
-        if ($models->isEmpty()) {
+        if ($ids->isEmpty()) {
             return 0;
         }
 
         $table = $this->model->getTable();
         $deleted = 0;
 
-        // Extract IDs from models
-        $ids = $models->pluck('Id')->toArray();
-
         // Chunk into batches (Salesforce limit for composite API is 200)
-        $chunks = collect($ids)->chunk($this->bulkOperationSize);
+        $chunks = $ids->chunk($this->bulkOperationSize);
 
         foreach ($chunks as $chunk) {
             try {
@@ -360,10 +339,12 @@ class SOQLBuilder extends Builder
                     $deleted += count(array_filter($saveResults, fn ($result): bool => (bool) ($result['success'] ?? false)));
                 }
             } catch (Exception $e) {
-                if ($allOrNone || $this->throwExceptions) {
+                // Logs, then rethrows unless throw_exceptions is off
+                $this->handleSalesforceException($e, 'bulk delete');
+
+                if ($allOrNone) {
                     throw $e;
                 }
-                // Continue to next chunk if not throwing
             }
         }
 

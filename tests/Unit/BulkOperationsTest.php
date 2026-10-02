@@ -4,6 +4,7 @@ use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -717,5 +718,57 @@ describe('Composite SObject Collections response shape', function () {
             ]);
 
         expect(Account::query()->delete())->toBe(1);
+    });
+});
+
+describe('bulk operation failure logging and id lookup', function () {
+    it('logs a failed insert chunk when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('post')->once()->andThrow(new Exception('Insert chunk failed'));
+
+        expect(Account::query()->insert([['Name' => 'Company A']]))->toHaveCount(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn ($message, $context) => str_contains($message, 'Insert chunk failed')
+                && $context['operation'] === 'bulk insert');
+    });
+
+    it('logs a failed delete chunk when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')->once()->andReturn([
+            'totalSize' => 1,
+            'done'      => true,
+            'records'   => [['Id' => '001xx000001', 'attributes' => ['type' => 'Account']]],
+        ]);
+        Forrest::shouldReceive('delete')->once()->andThrow(new Exception('Delete chunk failed'));
+
+        expect(Account::query()->delete())->toBe(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn ($message, $context) => str_contains($message, 'Delete chunk failed')
+                && $context['operation'] === 'bulk delete');
+    });
+
+    it('selects only Id when finding the records to delete', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with("select Id from Account where Name = 'Gone'")
+            ->andReturn([
+                'totalSize' => 1,
+                'done'      => true,
+                'records'   => [['Id' => '001xx000001', 'attributes' => ['type' => 'Account']]],
+            ]);
+        Forrest::shouldReceive('delete')->once()->andReturn([['id' => '001xx000001', 'success' => true]]);
+
+        expect(Account::where('Name', 'Gone')->delete())->toBe(1);
     });
 });

@@ -3,6 +3,7 @@
 use Daikazu\EloquentSalesforceObjects\Database\SOQLConnection;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
+use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
@@ -367,6 +368,45 @@ describe('SOQLBuilder — cursor() with defaultColumns', function () {
             ]);
 
         iterator_to_array(Account::select(['Id', 'Name'])->cursor());
+    });
+
+    it('includes the timestamp and soft-delete columns, like get() does', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, ')
+                && str_contains($q, ', CreatedDate, LastModifiedDate, IsDeleted from Account')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Account::cursor());
+    });
+
+    it('expands * to every field for a model without defaultColumns', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Contact')->andReturn([
+            'fields' => [['name' => 'Id'], ['name' => 'LastName']],
+        ]);
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with('select Id, CreatedDate, LastModifiedDate, IsDeleted, LastName from Contact')
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Contact::cursor());
+    });
+
+    it('expands * to every field after allColumns()', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with('select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, Industry from Account')
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Account::allColumns()->cursor());
     });
 });
 

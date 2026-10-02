@@ -66,20 +66,7 @@ class SOQLConnection extends Connection
     protected function executeQuery(string $statement): array
     {
         try {
-            // Execute query
-            $result = $this->queryAll
-                ? $this->adapter->queryAll($statement)
-                : $this->adapter->query($statement);
-
-            // Track query history
-            $this->adapter->queryHistory()->push($statement);
-
-            // Log the query if query logging is enabled
-            if ($this->enableQueryLog) {
-                $this->logSalesforceError('SOQL Query Executed', [
-                    'query' => $statement,
-                ], 'info');
-            }
+            $result = $this->fetch($statement);
 
             // Collect all records, handling pagination
             $records = $result['records'] ?? [];
@@ -113,6 +100,26 @@ class SOQLConnection extends Connection
     }
 
     /**
+     * Send a prepared statement to Salesforce and record it in the query history.
+     */
+    private function fetch(string $statement): array
+    {
+        $result = $this->queryAll
+            ? $this->adapter->queryAll($statement)
+            : $this->adapter->query($statement);
+
+        $this->adapter->queryHistory()->push($statement);
+
+        if ($this->enableQueryLog) {
+            $this->logSalesforceError('SOQL Query Executed', [
+                'query' => $statement,
+            ], 'info');
+        }
+
+        return $result;
+    }
+
+    /**
      * Run a select statement against the database and returns a generator.
      *
      * @param  string  $query
@@ -127,18 +134,17 @@ class SOQLConnection extends Connection
     {
 
         $statement = $this->run($query, $bindings, function (string $query, array $bindings): array {
-
             if ($this->pretending()) {
                 return [];
             }
 
-            $statement = $this->substituteBindings($query, $bindings);
+            try {
+                return $this->fetch($this->substituteBindings($query, $bindings));
+            } catch (Exception $e) {
+                $this->handleSalesforceException($e, 'query');
 
-            if ($this->queryAll) {
-                return $this->adapter->queryAll($statement);
+                return [];
             }
-
-            return $this->adapter->query($statement);
         });
 
         // Yield all records from the initial result
