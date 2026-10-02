@@ -11,8 +11,6 @@ use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
-use ReflectionClass;
-use ReflectionException;
 use Throwable;
 
 /**
@@ -228,32 +226,7 @@ class SalesforceAdapter implements AdapterInterface
      */
     public function bulkCreate(string $object, array $records, bool $allOrNone = false): array
     {
-        $this->ensureAuthenticated();
-
-        if ($records === []) {
-            return [];
-        }
-
-        // Salesforce limit is 200 records per request
-        if (count($records) > $this->bulkOperationSize) {
-            throw new SalesforceException("Bulk create is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
-        }
-
-        try {
-            $preparedRecords = array_map(
-                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $record),
-                $records
-            );
-
-            return Forrest::post("{$this->apiVersion}/composite/sobjects", [
-                'body' => [
-                    'allOrNone' => $allOrNone,
-                    'records'   => $preparedRecords,
-                ],
-            ]);
-        } catch (Throwable $e) {
-            throw new SalesforceException("Bulk create failed for {$object}: " . $e->getMessage(), 0, $e);
-        }
+        return $this->compositeSave('post', 'create', $object, $records, $allOrNone);
     }
 
     /**
@@ -270,6 +243,19 @@ class SalesforceAdapter implements AdapterInterface
      */
     public function bulkUpdate(string $object, array $records, bool $allOrNone = false): array
     {
+        return $this->compositeSave('patch', 'update', $object, $records, $allOrNone);
+    }
+
+    /**
+     * Send records to the Composite SObject Collections API (create or update)
+     *
+     * @param  'post'|'patch'  $method
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    private function compositeSave(string $method, string $verb, string $object, array $records, bool $allOrNone): array
+    {
         $this->ensureAuthenticated();
 
         if ($records === []) {
@@ -278,7 +264,7 @@ class SalesforceAdapter implements AdapterInterface
 
         // Salesforce limit is 200 records per request
         if (count($records) > $this->bulkOperationSize) {
-            throw new SalesforceException("Bulk update is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
+            throw new SalesforceException("Bulk {$verb} is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
         }
 
         try {
@@ -287,14 +273,14 @@ class SalesforceAdapter implements AdapterInterface
                 $records
             );
 
-            return Forrest::patch("{$this->apiVersion}/composite/sobjects", [
+            return Forrest::{$method}("{$this->apiVersion}/composite/sobjects", [
                 'body' => [
                     'allOrNone' => $allOrNone,
                     'records'   => $preparedRecords,
                 ],
             ]);
         } catch (Throwable $e) {
-            throw new SalesforceException("Bulk update failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw new SalesforceException("Bulk {$verb} failed for {$object}: " . $e->getMessage(), 0, $e);
         }
     }
 
@@ -688,37 +674,15 @@ class SalesforceAdapter implements AdapterInterface
     }
 
     /**
-     * Get table name from a model class without instantiation
+     * Get the Salesforce object name for a model class
      *
-     * Replicates the logic of Model::getTable() without creating an instance
+     * Instantiates the model so $table and any getTable() override are honoured.
      *
-     * @param  string  $class  Fully qualified class name
-     * @return string Table name
-     *
-     * @throws SalesforceException
+     * @param  class-string<SalesforceModel>  $class
      */
     protected function getTableNameFromClass(string $class): string
     {
-        try {
-            $reflection = new ReflectionClass($class);
-
-            // Check if class has a $table property defined
-            if ($reflection->hasProperty('table')) {
-                $property = $reflection->getProperty('table');
-                $defaultProperties = $reflection->getDefaultProperties();
-
-                // If table property has a default value, use it
-                if (isset($defaultProperties['table'])) {
-                    return $defaultProperties['table'];
-                }
-            }
-
-            // Fallback: use class basename (same logic as Model::getTable())
-            // Laravel's default: Str::snake(class_basename($class))
-            return class_basename($class);
-        } catch (ReflectionException $e) {
-            throw new SalesforceException("Unable to resolve table name for class {$class}: " . $e->getMessage(), 0, $e);
-        }
+        return (new $class)->getTable();
     }
 
     /**

@@ -128,40 +128,7 @@ trait SavesSalesforceRecords
      */
     protected function filterUpdateableFields(array $attributes): array
     {
-        if ($attributes === []) {
-            return $attributes;
-        }
-
-        // Always exclude known system fields that are never updateable
-        $systemFields = [
-            'CreatedDate',
-            'CreatedById',
-            'LastModifiedDate',
-            'LastModifiedById',
-            'SystemModstamp',
-            'IsDeleted',
-        ];
-
-        // Remove system fields first
-        $attributes = array_diff_key($attributes, array_flip($systemFields));
-
-        // Get updateable fields from Salesforce metadata (cached for performance)
-        try {
-            $updateableFields = $this->getSalesforceAdapter()
-                ->getUpdateableFields($this->getTable());
-
-            // Keep only fields that are in the updateable list
-            return array_filter($attributes, fn ($value, $key): bool => in_array($key, $updateableFields), ARRAY_FILTER_USE_BOTH);
-        } catch (Throwable $e) {
-            // If we can't get updateable fields (e.g., API error), log and return filtered by system fields only
-            // This provides basic protection even if describe call fails
-            $this->logSalesforceError('Failed to get updateable fields for filtering: ' . $e->getMessage(), [
-                'exception' => $e::class,
-                'object'    => $this->getTable(),
-            ], 'warning');
-
-            return $attributes;
-        }
+        return $this->filterWriteableFields($attributes, 'updateable');
     }
 
     /**
@@ -173,30 +140,40 @@ trait SavesSalesforceRecords
      */
     protected function filterCreateableFields(array $attributes): array
     {
+        return $this->filterWriteableFields($attributes, 'createable');
+    }
+
+    /**
+     * Strip system fields, then keep only the fields describe marks as createable/updateable.
+     * If describe fails, log it and fall back to stripping system fields only.
+     *
+     * @param  'createable'|'updateable'  $mode
+     */
+    private function filterWriteableFields(array $attributes, string $mode): array
+    {
         if ($attributes === []) {
             return $attributes;
         }
 
-        // Always exclude known system fields that are never createable
-        $systemFields = [
-            'CreatedDate',
-            'LastModifiedDate',
-            'LastModifiedById',
-            'SystemModstamp',
-            'IsDeleted',
-        ];
+        // Known system fields that are never writeable. CreatedById can be set on
+        // insert by orgs with the "Set Audit Fields upon Record Creation" permission.
+        $systemFields = ['CreatedDate', 'LastModifiedDate', 'LastModifiedById', 'SystemModstamp', 'IsDeleted'];
 
-        // Remove system fields first
+        if ($mode === 'updateable') {
+            $systemFields[] = 'CreatedById';
+        }
+
         $attributes = array_diff_key($attributes, array_flip($systemFields));
 
-        // Get createable fields from Salesforce metadata (cached for performance)
         try {
-            $createableFields = $this->getSalesforceAdapter()
-                ->getCreateableFields($this->getTable());
+            $adapter = $this->getSalesforceAdapter();
+            $writeableFields = $mode === 'updateable'
+                ? $adapter->getUpdateableFields($this->getTable())
+                : $adapter->getCreateableFields($this->getTable());
 
-            return array_filter($attributes, fn ($value, $key): bool => in_array($key, $createableFields), ARRAY_FILTER_USE_BOTH);
+            return array_intersect_key($attributes, array_flip($writeableFields));
         } catch (Throwable $e) {
-            $this->logSalesforceError('Failed to get createable fields for filtering: ' . $e->getMessage(), [
+            $this->logSalesforceError("Failed to get {$mode} fields for filtering: " . $e->getMessage(), [
                 'exception' => $e::class,
                 'object'    => $this->getTable(),
             ], 'warning');

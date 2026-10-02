@@ -51,11 +51,6 @@ class SalesforceModel extends Model
 
     protected array $readOnly = [];
 
-    //    private array $readFields = [
-    //        'Id',
-    //        'attributes',
-    //    ];
-
     public function __construct(array $attributes = [])
     {
         parent::__construct($attributes);
@@ -66,7 +61,9 @@ class SalesforceModel extends Model
     }
 
     /**
-     * Get writable attributes excluding read-only fields todo: check if this is needed
+     * Get the attributes minus the $readOnly fields and any extra exclusions.
+     *
+     * save() does not use this; it filters by Salesforce's createable/updateable metadata.
      */
     public function writeableAttributes(array $exclude = []): array
     {

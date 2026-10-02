@@ -19,6 +19,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 - **`cursor()` records its query in `queryHistory()`** and, with `throw_exceptions` off, logs a failed query and yields nothing instead of throwing.
 - **Failed bulk `insert()` / `delete()` chunks are logged** when `throw_exceptions` is off. Before, they were skipped without any log entry.
 - **Bulk `delete()` selects only `Id`** to find the records to delete, instead of fetching every column.
+- **Passing a model class to the adapter respects an overridden `getTable()`.** Before, it read only the `$table` property through reflection.
 
 ### Changed
 
