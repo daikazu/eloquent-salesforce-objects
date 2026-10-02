@@ -42,6 +42,8 @@ trait SavesSalesforceRecords
             $this->exists = true;
             $this->wasRecentlyCreated = true;
 
+            $this->refreshSavedFields();
+
             $this->fireModelEvent('created', false);
 
             return true;
@@ -77,6 +79,8 @@ trait SavesSalesforceRecords
             // Update the record in Salesforce
             $adapter->update($this->getTable(), $this->getKey(), $dirty);
 
+            $this->refreshSavedFields();
+
             $this->syncChanges();
 
             $this->fireModelEvent('updated', false);
@@ -86,6 +90,19 @@ trait SavesSalesforceRecords
             $this->handleSalesforceException($e, 'update');
 
             return false;
+        }
+    }
+
+    /**
+     * Re-read the fields listed in #[Refreshes] (Laravel 13.33+), such as formula fields
+     * Salesforce computes on save. Laravel does this in the performInsert()/performUpdate()
+     * this trait overrides. A no-op on older Laravel.
+     */
+    protected function refreshSavedFields(): void
+    {
+        // @phpstan-ignore function.alreadyNarrowedType (always true on Laravel 13.33+, not on 12.x)
+        if (method_exists($this, 'refreshSavedAttributes')) {
+            $this->refreshSavedAttributes();
         }
     }
 

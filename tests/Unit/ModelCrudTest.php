@@ -2,6 +2,8 @@
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
+use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\AccountWithRefreshes;
+use Illuminate\Database\Eloquent\Attributes\Refreshes;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -547,3 +549,38 @@ it('the base query builder\'s toRawSql() uses SOQL escaping instead of crashing 
     expect(Account::select(['Id'])->where('Name', "O'Brien")->toBase()->toRawSql())
         ->toBe("select Id from Account where Name = 'O\\'Brien'");
 });
+
+describe('#[Refreshes] (Laravel 13.33+)', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+    });
+
+    function expectRefreshQuery(string $value): void
+    {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Rating_Formula__c from Account where Id = '001A' limit 1")
+            ->andReturn(['totalSize' => 1, 'done' => true, 'records' => [['Rating_Formula__c' => $value]]]);
+    }
+
+    it('re-reads the listed fields after an insert', function () {
+        Forrest::shouldReceive('sobjects')->once()->andReturn(['id' => '001A', 'success' => true, 'errors' => []]);
+        expectRefreshQuery('Hot');
+
+        $account = AccountWithRefreshes::create(['Name' => 'Acme']);
+
+        expect($account->Rating_Formula__c)->toBe('Hot');
+        expect($account->isDirty())->toBeFalse();
+    });
+
+    it('re-reads the listed fields after an update', function () {
+        Forrest::shouldReceive('sobjects')->once()->andReturn(null);
+        expectRefreshQuery('Cold');
+
+        $account = (new AccountWithRefreshes)->newFromBuilder(['Id' => '001A', 'Name' => 'Acme']);
+        $account->Name = 'Acme Corp';
+        $account->save();
+
+        expect($account->Rating_Formula__c)->toBe('Cold');
+    });
+})->skip(! class_exists(Refreshes::class), 'Requires Laravel 13.33+');
