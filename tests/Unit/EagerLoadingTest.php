@@ -406,6 +406,22 @@ describe('with() — subquery strategy', function () {
         expect($account->contacts)->toHaveCount(2);
     });
 
+    it('loads every child when Salesforce pages a parent\'s children', function () {
+        fakeSubquerySalesforce([
+            ['Id' => '001A', 'Contacts' => [
+                'done'           => false,
+                'nextRecordsUrl' => '/services/data/v64.0/query/01gA-2',
+                'records'        => [['Id' => '003A']],
+            ]],
+        ]);
+        Forrest::shouldReceive('next')->once()->with('/services/data/v64.0/query/01gA-2')
+            ->andReturn(['done' => true, 'records' => [['Id' => '003B'], ['Id' => '003C']]]);
+
+        $account = Account::select(['Id'])->with('contacts')->get()->first();
+
+        expect($account->contacts->pluck('Id')->all())->toBe(['003A', '003B', '003C']);
+    });
+
     it('falls back to a separate query when the closure uses offset()', function () {
         $queries = fakeSubquerySalesforce(accountsWithContacts(), []);
 

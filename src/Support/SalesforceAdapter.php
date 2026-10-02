@@ -52,11 +52,12 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::query($soql);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
             throw new SalesforceException('Query failed: ' . $e->getMessage(), 0, $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
     }
 
     /**
@@ -69,11 +70,12 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::queryAll($soql);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
             throw new SalesforceException('QueryAll failed: ' . $e->getMessage(), 0, $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
     }
 
     /**
@@ -86,11 +88,36 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::next($nextRecordsUrl);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
             throw new SalesforceException('Next records query failed: ' . $e->getMessage(), 0, $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
+    }
+
+    /**
+     * Fetch the remaining pages of any child relationship results that came back partly,
+     * so each parent row holds all of its children.
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    protected function withAllNestedRecords(mixed $response, array $result): array
+    {
+        foreach ($this->parser->nestedNextRecordsUrls($response) as $index => $relationships) {
+            foreach ($relationships as $field => $url) {
+                while ($url !== null) {
+                    $page = $this->next($url);
+
+                    array_push($result['records'][$index][$field], ...$page['records']);
+
+                    $url = $page['nextRecordsUrl'];
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**

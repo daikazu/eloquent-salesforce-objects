@@ -22,6 +22,29 @@ class ResponseParser
     }
 
     /**
+     * Find child relationship results that Salesforce returned only partly
+     *
+     * A parent row's nested subquery result carries its own nextRecordsUrl when the
+     * children don't fit in one page. Keys are record index, then relationship field.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function nestedNextRecordsUrls(mixed $response): array
+    {
+        $urls = [];
+
+        foreach ($this->normalize($response)['records'] ?? [] as $index => $record) {
+            foreach (is_array($record) ? $record : [] as $field => $value) {
+                if (is_array($value) && isset($value['records']) && ! empty($value['nextRecordsUrl'])) {
+                    $urls[$index][$field] = $value['nextRecordsUrl'];
+                }
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
      * Parse a single record response
      */
     public function parseRecordResponse(mixed $response): array
