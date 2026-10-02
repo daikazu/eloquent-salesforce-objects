@@ -82,10 +82,14 @@ $contacts = Contact::insert($contactsData);
 
 Update multiple records efficiently.
 
+Models have no `bulkUpdate()` method. Bulk updates go through `SalesforceAdapter::bulkUpdate()`, which takes the Salesforce object name, an array of records (each must include `Id`), and an optional `allOrNone` flag.
+
+> **Note:** Unlike `insert()` and query `delete()`, `bulkUpdate()` is **not** chunked for you. It accepts at most 200 records per call (`bulk_operation_size`) and throws a `SalesforceException` above that, so chunk larger sets yourself.
+
 ### Basic Usage
 
 ```php
-use App\Models\Account;
+use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 
 $updates = [
     ['Id' => '001xx000001', 'Phone' => '555-0001', 'Industry' => 'Technology'],
@@ -93,7 +97,7 @@ $updates = [
     ['Id' => '001xx000003', 'Phone' => '555-0003', 'Industry' => 'Healthcare'],
 ];
 
-$accounts = Account::bulkUpdate($updates);
+$results = app(SalesforceAdapter::class)->bulkUpdate('Account', $updates);
 ```
 
 ### Update from Query Results
@@ -111,9 +115,14 @@ $updates = $accounts->map(function ($account) {
         'Status__c' => 'Premium',
         'Rating' => $account->AnnualRevenue > 5000000 ? 'Hot' : 'Warm',
     ];
-})->toArray();
+});
 
-Account::bulkUpdate($updates);
+// Chunk into requests of at most 200 records
+$adapter = app(SalesforceAdapter::class);
+
+$updates->chunk(200)->each(
+    fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all())
+);
 ```
 
 ## Bulk Delete
@@ -175,7 +184,7 @@ Contact::insert($data, allOrNone: true);
 Account::query()->delete(allOrNone: true);
 
 // Update with rollback (via adapter)
-Account::bulkUpdate($updates, allOrNone: true);
+app(SalesforceAdapter::class)->bulkUpdate('Account', $updates, allOrNone: true);
 ```
 
 ### Automatic Chunking
@@ -451,10 +460,14 @@ public function bulkUpdateAccounts(Request $request)
             'Industry' => $account['industry'] ?? null,
             'Phone' => $account['phone'] ?? null,
         ];
-    })->toArray();
+    });
 
     try {
-        $results = Account::bulkUpdate($updateData);
+        $adapter = app(SalesforceAdapter::class);
+
+        $results = $updateData->chunk(200)->flatMap(
+            fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all())
+        );
 
         return response()->json([
             'message' => 'Accounts updated successfully',
