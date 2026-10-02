@@ -576,7 +576,7 @@ The exception classes changed too:
 |---|---|
 | `Lester\EloquentSalesForce\Exceptions\RestAPIException` | `Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException` |
 | `Lester\EloquentSalesForce\Exceptions\MalformedQueryException` | `Daikazu\EloquentSalesforceObjects\Exceptions\MalformedQueryException` |
-| `RequestLimitExceeded`, `UnableToLockRowException` | `SalesforceException`. Check `getMessage()` for `REQUEST_LIMIT_EXCEEDED` / `UNABLE_TO_LOCK_ROW`. |
+| `RequestLimitExceeded`, `UnableToLockRowException` | `SalesforceException`. Check `$e->errorCode` for `REQUEST_LIMIT_EXCEEDED` / `UNABLE_TO_LOCK_ROW`. |
 
 ## Removed Features
 

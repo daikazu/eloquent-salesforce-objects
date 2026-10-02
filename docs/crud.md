@@ -295,6 +295,28 @@ Account::where('Industry', 'Obsolete')->delete();
 
 ## Error Handling
 
+### Reading the error
+
+Failed API calls throw `Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException`. Queries throw it too; it isn't wrapped in Laravel's `QueryException`. The message says what failed and why, and two properties give you the details:
+
+```php
+use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
+
+try {
+    Account::create(['Industry' => 'Technology']);
+} catch (SalesforceException $e) {
+    $e->getMessage(); // "Create failed for Account: REQUIRED_FIELD_MISSING: Required fields are missing: [Name] (HTTP 400)"
+    $e->errorCode;    // "REQUIRED_FIELD_MISSING" (null when Salesforce didn't send one)
+    $e->statusCode;   // 400 (null when the request never got a response)
+
+    if ($e->errorCode === 'UNABLE_TO_LOCK_ROW') {
+        // retry later
+    }
+}
+```
+
+Invalid SOQL throws `MalformedQueryException`, a subclass of `SalesforceException`, so you can catch it on its own.
+
 ### Handling Create Errors
 
 ```php
@@ -345,7 +367,7 @@ Configure exception handling in `config/eloquent-salesforce-objects.php`:
 'throw_exceptions' => false,
 ```
 
-When `throw_exceptions` is false:
+When `throw_exceptions` is false, failures are logged instead. `save()`, `update()` and `delete()` return `false`, and `create()` returns a model that wasn't saved:
 
 ```php
 $account = Account::create([
@@ -353,7 +375,7 @@ $account = Account::create([
     'InvalidField' => 'value', // Invalid field
 ]);
 
-if ($account === false) {
+if (! $account->exists) {
     // Creation failed, check logs
     echo "Failed to create account";
 }

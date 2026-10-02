@@ -208,7 +208,7 @@ Lead::where('Company', 'Test')->delete(); // bulk delete by query, returns the n
 - `create()` still returns a model, so check `$model->exists`.
 - Bulk insert skips the failed chunk and carries on.
 
-Set `SALESFORCE_THROW_EXCEPTIONS` explicitly rather than relying on `APP_DEBUG`. When exceptions are on, catch `Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException`. `AuthenticationException` and `MalformedQueryException` live in the same namespace.
+Set `SALESFORCE_THROW_EXCEPTIONS` explicitly rather than relying on `APP_DEBUG`. When exceptions are on, catch `Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException`; queries throw it directly, not wrapped in `QueryException`. It has `$e->errorCode` (e.g. `REQUEST_LIMIT_EXCEEDED`) and `$e->statusCode`. Invalid SOQL throws its subclass `MalformedQueryException`. `AuthenticationException` lives in the same namespace.
 
 ## Bulk operations
 

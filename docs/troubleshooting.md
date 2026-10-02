@@ -457,6 +457,8 @@ If you're still experiencing issues:
 
 ## Common Error Messages Reference
 
+The error code is in the exception message and in `$e->errorCode` (see [Reading the error](crud.md#reading-the-error)). An error with no code, like `HTTP 414 Request-URI Too Large`, means the request never reached Salesforce's API. A 414 means the query was too long to send in the URL: select fewer columns, or filter on fewer values.
+
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `INVALID_SESSION_ID` | Session expired | Re-authenticate |

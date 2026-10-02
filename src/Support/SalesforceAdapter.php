@@ -54,7 +54,7 @@ class SalesforceAdapter implements AdapterInterface
             $response = Forrest::query($soql);
             $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Query failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Query failed', $e);
         }
 
         return $this->withAllNestedRecords($response, $result);
@@ -72,7 +72,7 @@ class SalesforceAdapter implements AdapterInterface
             $response = Forrest::queryAll($soql);
             $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('QueryAll failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('QueryAll failed', $e);
         }
 
         return $this->withAllNestedRecords($response, $result);
@@ -90,7 +90,7 @@ class SalesforceAdapter implements AdapterInterface
             $response = Forrest::next($nextRecordsUrl);
             $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Next records query failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Next records query failed', $e);
         }
 
         return $this->withAllNestedRecords($response, $result);
@@ -133,7 +133,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Search failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Search failed', $e);
         }
     }
 
@@ -156,7 +156,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseRecordResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Retrieve failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Retrieve failed for {$object} {$id}", $e);
         }
     }
 
@@ -176,7 +176,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseCreateResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Create failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Create failed for {$object}", $e);
         }
     }
 
@@ -196,7 +196,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return true;
         } catch (Throwable $e) {
-            throw new SalesforceException("Update failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Update failed for {$object} {$id}", $e);
         }
     }
 
@@ -215,7 +215,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return true;
         } catch (Throwable $e) {
-            throw new SalesforceException("Delete failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Delete failed for {$object} {$id}", $e);
         }
     }
 
@@ -235,7 +235,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseCreateResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Upsert failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Upsert failed for {$object}", $e);
         }
     }
 
@@ -307,7 +307,7 @@ class SalesforceAdapter implements AdapterInterface
                 ],
             ]);
         } catch (Throwable $e) {
-            throw new SalesforceException("Bulk {$verb} failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Bulk {$verb} failed for {$object}", $e);
         }
     }
 
@@ -341,7 +341,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return Forrest::delete("{$this->apiVersion}/composite/sobjects?ids={$idsParam}&allOrNone=" . ($allOrNone ? 'true' : 'false'));
         } catch (Throwable $e) {
-            throw new SalesforceException("Bulk delete failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Bulk delete failed for {$object}", $e);
         }
     }
 
@@ -358,7 +358,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseMetadataResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('DescribeGlobal failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('DescribeGlobal failed', $e);
         }
     }
 
@@ -397,8 +397,8 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseMetadataResponse($response);
         } catch (Throwable $e) {
-            $message = in_array($objectName, [null, '', '0'], true) ? 'Describe failed: ' : "Describe failed for {$objectName}: ";
-            throw new SalesforceException($message . $e->getMessage(), 0, $e);
+            $context = in_array($objectName, [null, '', '0'], true) ? 'Describe failed' : "Describe failed for {$objectName}";
+            throw SalesforceException::fromThrowable($context, $e);
         }
     }
 
@@ -678,7 +678,7 @@ class SalesforceAdapter implements AdapterInterface
             // Return the response as-is, or parse it if it's an array
             return is_array($response) ? $response : ['response' => $response];
         } catch (Throwable $e) {
-            throw new SalesforceException("Apex REST call failed for {$path}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Apex REST call failed for {$path}", $e);
         }
     }
 

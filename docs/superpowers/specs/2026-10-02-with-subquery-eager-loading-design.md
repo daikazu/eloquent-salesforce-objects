@@ -87,7 +87,7 @@ After `parent::getModels()` returns, for each subquery relation on each parent m
 
 ## Phases
 
-**Status (2026-10-02):** phases 0, 1, 2 and 4 are done. Phase 3 (`belongsTo`) is deferred. Long IN lists on the fallback path are split into groups of 200 (this covers `load()`, `loadMissing()` and `belongsTo`). The `Query failed: null` error message is still an open follow-up.
+**Status (2026-10-02):** phases 0, 1, 2 and 4 are done. Phase 3 (`belongsTo`) is deferred. Long IN lists on the fallback path are split into groups of 200 (this covers `load()`, `loadMissing()` and `belongsTo`). The `Query failed: null` error message is fixed: errors now carry the HTTP status, body and Salesforce error code.
 
 **Verified against a sandbox (2026-10-02):** `with('contacts')` (subquery) and `get()->load('contacts')` (Ids in groups of 200) both succeed at 200, 400, 600, 800, 1000 and 1500 Accounts. Before this work, `load()` failed at 600.
 

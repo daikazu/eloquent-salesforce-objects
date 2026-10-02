@@ -13,7 +13,6 @@ use DateTimeInterface;
 use Exception;
 use Generator;
 use Illuminate\Database\Connection;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 use stdClass;
 
@@ -230,16 +229,9 @@ class SOQLConnection extends Connection
 
         $start = microtime(true);
 
-        try {
-            $result = $this->runQueryCallback($query, $bindings, $callback);
-        } catch (QueryException $e) {
-            $result = $this->handleQueryException(
-                $e,
-                $query,
-                $bindings,
-                $callback
-            );
-        }
+        // Unlike Laravel's run(), don't wrap failures in QueryException: let the
+        // SalesforceException through, with its own message and status/error code.
+        $result = $callback($query, $bindings);
         // Once we have run the query, we will calculate the time that it took to run and
         // then log the query, bindings, and execution time, so we will report them on
         // the event that the developer needs them. We'll log time in milliseconds.

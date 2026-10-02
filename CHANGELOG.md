@@ -6,6 +6,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Added
 
+- **`SalesforceException::$statusCode` and `::$errorCode`** expose the HTTP status and Salesforce error code (e.g. `REQUEST_LIMIT_EXCEEDED`) of a failed call.
 - **`with()` loads `hasMany` / `hasOne` through SOQL child subqueries, in one API call.** `Account::with('contacts')` now sends `select ..., (select ... from Contacts) from Account` instead of a second query listing every parent Id. That list failed at around 600 parents against a real org because the request was too large.
     - Relationship names come from describe metadata (new `AdapterInterface::childRelationshipName()`), so custom objects use their real `__r` name.
     - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery, and `limit()` now applies per parent.
@@ -20,6 +21,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Fixed
 
+- **Error messages say what went wrong.** A Salesforce error with a non-JSON body (an HTML error page, or none) used to read `Query failed: null`. It now gives the HTTP status and body, e.g. `Query failed: HTTP 414 Request-URI Too Large (the request is too long: ...)`. Salesforce's JSON errors read `ERROR_CODE: message (HTTP 400)` instead of a pretty-printed JSON dump.
 - **`simplePaginate()` no longer skips a record on every page.** The offset was calculated from `perPage + 1`, so page 2 at 20 per page started at row 21.
 - **A query with no results is no longer mistaken for a COUNT** when a value in its WHERE clause contains `COUNT(`. Before, it returned one phantom model.
 - **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
@@ -35,6 +37,8 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Changed
 
+- **Eloquent queries throw `SalesforceException` instead of Laravel's `QueryException`.** Before, a failed `get()`/`first()`/`cursor()` was wrapped in `QueryException`, so `catch (SalesforceException)`, as the docs recommend, didn't catch it. Code that catches `QueryException` around Salesforce queries needs updating.
+- **`MalformedQueryException` now extends `SalesforceException` and is thrown for `MALFORMED_QUERY` errors.** Before, it existed but was never thrown.
 - **`join()` and all its variants (`leftJoin`, `crossJoin`, `joinSub`, `joinWhere`, ...) now throw `InvalidArgumentException`**, as the docs already said. Before, they quietly compiled into a child subquery named by pluralizing the object (`Foo__c` became `Foo__cs`), which Salesforce rejects for custom objects, and the rows came back nested rather than joined. Use `with()` for child records, `select('Account.Name')` for parent fields, or a `whereIn` semi-join to filter.
 - `AdapterInterface` gains `childRelationshipName()`, `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has all three.
 
