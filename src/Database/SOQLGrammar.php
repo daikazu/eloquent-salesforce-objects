@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\Grammar;
 use Illuminate\Support\Str;
 
 class SOQLGrammar extends Grammar
 {
-    protected SalesforceModel $model;
+    protected ?SalesforceModel $model = null;
 
     /**
      * The components that make up a select clause.
@@ -34,7 +33,7 @@ class SOQLGrammar extends Grammar
         'for',
     ];
 
-    public function getModel(): SalesforceModel
+    public function getModel(): ?SalesforceModel
     {
         return $this->model;
     }
@@ -105,7 +104,7 @@ class SOQLGrammar extends Grammar
 
     protected function isDate($column): bool
     {
-        return in_array($column, $this->model->getDates());
+        return $this->model !== null && in_array($column, $this->model->getDates());
     }
 
     public function parameter($value, $column = null): string
@@ -144,7 +143,9 @@ class SOQLGrammar extends Grammar
     {
         return collect($joins)
             ->map(function ($join): string {
-                $adapter = app(SalesforceAdapter::class);
+                /** @var SOQLConnection $connection */
+                $connection = $this->connection;
+                $adapter = $connection->getAdapter();
 
                 $table = $join->table;
 

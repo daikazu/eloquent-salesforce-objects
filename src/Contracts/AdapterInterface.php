@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Contracts;
 
+use Illuminate\Support\Collection;
+
 interface AdapterInterface
 {
     /**
@@ -76,6 +78,22 @@ interface AdapterInterface
      * @return array Array of picklist values
      */
     public function picklistValues(string | object $object, string $field): array;
+
+    /**
+     * Resolve the columns to select, expanding ['*'] to every field on the object
+     *
+     * @param  string|object  $object  Salesforce object name or model
+     * @param  array<int, string>  $columns
+     * @return array<int, string>
+     */
+    public function resolveFields(string | object $object, array $columns = ['*']): array;
+
+    /**
+     * The SOQL statements executed through this adapter
+     *
+     * @return Collection<int, string>
+     */
+    public function queryHistory(): Collection;
 
     /**
      * Bulk create multiple records (up to 200 per request)

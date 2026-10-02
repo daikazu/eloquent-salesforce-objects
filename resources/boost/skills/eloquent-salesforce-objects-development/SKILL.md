@@ -272,7 +272,7 @@ Account::picklistValues('Industry'); // [['value' => ..., 'label' => ..., 'defau
 
 ## Raw API access
 
-Inject `SalesforceAdapter` (or resolve `Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface`) for anything the builder does not cover. Authentication is automatic.
+Inject `SalesforceAdapter` (or resolve `Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface`) for anything the builder does not cover. Authentication is automatic. Both resolve to the same singleton. Binding your own `AdapterInterface` implementation (for example a fake in tests) replaces it for queries, saves and batches alike.
 
 ```php
 public function __construct(private SalesforceAdapter $salesforce) {}

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Closure;
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Exception;
 use Generator;
@@ -24,11 +24,16 @@ class SOQLConnection extends Connection
     protected bool $enableQueryLog;
 
     public function __construct(
-        private readonly SalesforceAdapter $adapter,
+        private readonly AdapterInterface $adapter,
         private readonly bool $queryAll = false,
     ) {
         // Cache config values for performance
         $this->enableQueryLog = config('eloquent-salesforce-objects.enable_query_log', false);
+    }
+
+    public function getAdapter(): AdapterInterface
+    {
+        return $this->adapter;
     }
 
     public function setGrammar(SOQLGrammar $grammar): void

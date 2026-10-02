@@ -13,6 +13,12 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 - **`simplePaginate()` no longer skips a record on every page.** The offset was calculated from `perPage + 1`, so page 2 at 20 per page started at row 21.
 - **A query with no results is no longer mistaken for a COUNT** when a value in its WHERE clause contains `COUNT(`. Before, it returned one phantom model.
 - **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
+- **One adapter everywhere.** `AdapterInterface` is now a singleton that resolves to the same `SalesforceAdapter` instance. Queries, saves, relationship subqueries and `SalesforceBatch` all use it, so binding your own `AdapterInterface` replaces it for all of them. Before, reads always used the concrete `SalesforceAdapter`.
+- **Compiling a `where` on a `SOQLGrammar` without a model no longer throws** an uninitialized-property error.
+
+### Changed
+
+- `AdapterInterface` gains `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has both.
 
 ## v1.1.0 - 2026-05-22
 

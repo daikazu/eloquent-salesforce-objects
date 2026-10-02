@@ -11,7 +11,6 @@ use Daikazu\EloquentSalesforceObjects\Database\SOQLHasOne;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\DeletesSalesforceRecords;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\HasSalesforceMetadata;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\SavesSalesforceRecords;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -91,8 +90,7 @@ class SalesforceModel extends Model
      */
     public function newEloquentBuilder($query): SOQLBuilder
     {
-        $adapter = app(SalesforceAdapter::class);
-        return new SOQLBuilder($adapter, $query);
+        return new SOQLBuilder($this->getSalesforceAdapter(), $query);
     }
 
     /**

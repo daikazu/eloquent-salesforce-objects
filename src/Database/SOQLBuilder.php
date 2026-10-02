@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use BadMethodCallException;
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,7 +25,7 @@ class SOQLBuilder extends Builder
     private SOQLGrammar $soqlGrammar;
 
     public function __construct(
-        private readonly SalesforceAdapter $adapter,
+        private readonly AdapterInterface $adapter,
         QueryBuilder $query
     ) {
         $connection = new SOQLConnection($this->adapter);
