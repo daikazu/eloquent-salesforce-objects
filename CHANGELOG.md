@@ -2,7 +2,7 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
-## Unreleased
+## v2.0.0 - 2026-10-02
 
 This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](docs/upgrading.md) for what to change.
 
