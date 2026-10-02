@@ -247,22 +247,29 @@ class SOQLConnection extends Connection
     /**
      * Replace the ? placeholders in a compiled query with escaped binding values.
      */
-    public function substituteBindings(string $query, array $bindings): string
+    public function substituteBindings(string $query, array $bindings, bool $prepared = false): string
     {
         $bindings = array_values($bindings);
         $index = 0;
 
         // "?:date" / "?:datetime" are SOQLGrammar's typed placeholders for date fields
-        return (string) preg_replace_callback('/\?(?::(date|datetime)\b)?/', function (array $match) use (&$index, $bindings): string {
+        return (string) preg_replace_callback('/\?(?::(date|datetime)\b)?/', function (array $match) use (&$index, $bindings, $prepared): string {
             if (! array_key_exists($index, $bindings)) {
                 return $match[0];
             }
 
             $value = $bindings[$index++];
 
-            return isset($match[1])
-                ? $this->formatTemporal($value, $match[1])
-                : $this->formatBinding($value);
+            if (isset($match[1])) {
+                return $this->formatTemporal($value, $match[1]);
+            }
+
+            // Already run through prepareBindings() (Laravel's toRawSql() does that first)
+            if ($prepared) {
+                return $value === null ? 'null' : (string) $value;
+            }
+
+            return $this->formatBinding($value);
         }, $query);
     }
 
@@ -288,8 +295,9 @@ class SOQLConnection extends Connection
             return $type === 'date' ? $value : "{$value}T00:00:00Z";
         }
 
-        if ($type === 'datetime' && preg_match(SOQLGrammar::DATETIME_PATTERN, $value) === 1) {
-            return $value;
+        if (preg_match(SOQLGrammar::DATETIME_PATTERN, $value) === 1) {
+            // A datetime that prepareBindings() already formatted, going to a date field
+            return $type === 'datetime' ? $value : substr($value, 0, 10);
         }
 
         // The grammar only types values that match, so this is a programming error

@@ -468,6 +468,21 @@ class SOQLGrammar extends Grammar
         ]);
     }
 
+    /**
+     * Used by Laravel's toRawSql()/dumpRawSql(), which pass bindings already run through
+     * prepareBindings(). The base version escapes again through PDO, which SOQLConnection
+     * doesn't have; substitute them as they are.
+     *
+     * @param  string  $sql
+     * @param  array  $bindings
+     */
+    public function substituteBindingsIntoRawSql($sql, $bindings): string
+    {
+        return $this->connection instanceof SOQLConnection
+            ? $this->connection->substituteBindings($sql, $bindings, prepared: true)
+            : parent::substituteBindingsIntoRawSql($sql, $bindings);
+    }
+
     protected function compileLock(Builder $query, $value): string
     {
         return 'FOR UPDATE';

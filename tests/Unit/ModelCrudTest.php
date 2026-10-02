@@ -508,3 +508,42 @@ describe('full CRUD workflow', function () {
         expect($account->exists)->toBeFalse();
     });
 });
+
+describe('insertGetId and toRawSql', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+    });
+
+    it('insertGetId() creates the record and returns its Id', function () {
+        Forrest::shouldReceive('sobjects')->once()
+            ->with('Account', Mockery::on(fn ($args) => $args['method'] === 'post' && $args['body'] === ['Name' => 'Acme']))
+            ->andReturn(['id' => '001xx000003DGb2AAG', 'success' => true, 'errors' => []]);
+
+        expect(Account::insertGetId(['Name' => 'Acme']))->toBe('001xx000003DGb2AAG');
+    });
+
+    it('fillAndInsertGetId() sends the filled values without the type metadata', function () {
+        Forrest::shouldReceive('sobjects')->once()
+            ->with('Account', Mockery::on(fn ($args) => $args['body'] === ['Name' => 'Acme']))
+            ->andReturn(['id' => '001xx000003DGb2AAG', 'success' => true, 'errors' => []]);
+
+        expect(Account::fillAndInsertGetId(['Name' => 'Acme']))->toBe('001xx000003DGb2AAG');
+    });
+
+    it('toRawSql() returns the exact SOQL, like toSql()', function () {
+        Forrest::shouldReceive('describe')->andReturn(['fields' => [['name' => 'Id']]]);
+
+        $query = Account::select(['Id'])->where('Name', "O'Brien")->where('IsActive', true);
+
+        expect($query->toRawSql())->toBe("select Id from Account where Name = 'O\\'Brien' and IsActive = TRUE");
+        expect($query->toRawSql())->toBe($query->toSql());
+    });
+});
+
+it('the base query builder\'s toRawSql() uses SOQL escaping instead of crashing on PDO', function () {
+    Forrest::shouldReceive('hasToken')->andReturn(true);
+
+    expect(Account::select(['Id'])->where('Name', "O'Brien")->toBase()->toRawSql())
+        ->toBe("select Id from Account where Name = 'O\\'Brien'");
+});

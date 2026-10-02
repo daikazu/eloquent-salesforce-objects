@@ -103,16 +103,47 @@ class SOQLBuilder extends Builder
      */
     public function toSql()
     {
+        $query = $this->baseQueryWithColumns();
+
+        /** @var SOQLConnection $connection */
+        $connection = $query->getConnection();
+
+        return $connection->substituteBindings($query->toSql(), $query->getBindings());
+    }
+
+    /**
+     * A copy of the base query with scopes applied and a bare `*` expanded to the object's fields.
+     */
+    protected function baseQueryWithColumns(): QueryBuilder
+    {
         $query = $this->toBase()->clone();
 
         if ($query->columns === null || $query->columns === ['*']) {
             $query->columns = $this->describe();
         }
 
-        /** @var SOQLConnection $connection */
-        $connection = $query->getConnection();
+        return $query;
+    }
 
-        return $connection->substituteBindings($query->toSql(), $query->getBindings());
+    /**
+     * The exact SOQL that would be sent. Laravel's version escapes bindings for SQL
+     * through PDO, which this connection doesn't have.
+     */
+    public function toRawSql(): string
+    {
+        return $this->toSql();
+    }
+
+    public function dumpRawSql(): static
+    {
+        $this->baseQueryWithColumns()->dumpRawSql();
+
+        return $this;
+    }
+
+    public function ddRawSql(): never
+    {
+        $this->baseQueryWithColumns()->ddRawSql();
     }
 
     public function getModels($columns = ['*']): array
@@ -530,6 +561,20 @@ class SOQLBuilder extends Builder
         }
 
         return $results;
+    }
+
+    /**
+     * Create one record and return its Salesforce Id.
+     *
+     * @param  array<string, mixed>  $values
+     * @param  string|null  $sequence  Unused; Salesforce always returns the record Id
+     */
+    public function insertGetId(array $values, $sequence = null): ?string
+    {
+        // fillAndInsertGetId() passes a filled model's attributes, including the type metadata
+        unset($values['attributes']);
+
+        return $this->adapter->create($this->model->getTable(), $this->prepareWriteValues($values))['id'] ?? null;
     }
 
     /**
