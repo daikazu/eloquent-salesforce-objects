@@ -223,7 +223,7 @@ Contact::with('account')->get();
 ```
 
 That happens when:
-- the closure uses `offset()`, grouping or `distinct()`
+- the closure uses `offset()` or grouping
 - the relationship isn't one of the parent's child relationships in Salesforce
 - the local key isn't `Id`
 - `eager_load_strategy` is set to `query` in the config

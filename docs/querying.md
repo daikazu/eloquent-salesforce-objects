@@ -100,15 +100,20 @@ $contacts = Contact::whereNotNull('Email')->get();
 ### Where Between
 
 ```php
-// WHERE field BETWEEN min AND max
+// SOQL has no BETWEEN, so this compiles to (Amount >= 10000 and Amount <= 50000)
 $opportunities = Opportunity::whereBetween('Amount', [10000, 50000])->get();
 
-// Dates
+// whereNotBetween compiles to (Amount < 10000 or Amount > 50000)
+$outliers = Opportunity::whereNotBetween('Amount', [10000, 50000])->get();
+
+// Datetime fields: pass Carbon instances, not date strings
 $accounts = Account::whereBetween('CreatedDate', [
-    '2024-01-01',
-    '2024-12-31'
+    now()->startOfYear(),
+    now()->endOfYear(),
 ])->get();
 ```
+
+`whereIn()` and `whereNotIn()` accept `null` in the list (`Name in ('a', null)`). An empty `whereIn()` list matches nothing, and an empty `whereNotIn()` list matches everything.
 
 ### Date Queries
 

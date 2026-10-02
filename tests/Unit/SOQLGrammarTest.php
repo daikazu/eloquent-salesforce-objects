@@ -460,15 +460,14 @@ describe('SOQLGrammar — compileAggregate with COUNT(*)', function () {
 });
 
 describe('SOQLGrammar — compileAggregate with distinct', function () {
-    it('prepends distinct to the column name for COUNT(DISTINCT …)', function () {
+    it('compiles a distinct count of a column to COUNT_DISTINCT(…)', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
 
         Forrest::shouldReceive('query')
             ->once()
             ->with(Mockery::on(function (string $soql): bool {
-                // Grammar produces: select COUNT(distinct Name) from Account
-                return str_contains($soql, 'COUNT(distinct Name)');
+                return $soql === 'select COUNT_DISTINCT(Name) from Account';
             }))
             ->andReturn([
                 'totalSize' => 3,
@@ -616,5 +615,89 @@ describe('SOQLBuilder — join()', function () {
 
     it('still forwards other query builder methods', function () {
         expect(Account::query()->whereIn('Id', ['001'])->getQuery()->wheres)->toHaveCount(1);
+    });
+});
+
+// ===========================================================================
+// SQL-only constructs: compile to SOQL equivalents, or throw a clear error
+// ===========================================================================
+
+describe('SOQLGrammar — SQL-only constructs', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
+    });
+
+    it('renders null inside whereIn as the SOQL null literal', function () {
+        expect(Account::select(['Id'])->whereIn('Name', ['a', null])->toSql())
+            ->toBe("select Id from Account where Name in ('a', null)");
+    });
+
+    it('sends null inside whereIn as null in the executed query', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Id from Account where Name not in ('a', null)")
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::select(['Id'])->whereNotIn('Name', ['a', null])->get();
+    });
+
+    it('compiles an empty whereNotIn to a condition that is always true', function () {
+        expect(Account::select(['Id'])->whereNotIn('Name', [])->toSql())
+            ->toBe('select Id from Account where Id != null');
+    });
+
+    it('compiles empty integer in/not-in lists to SOQL', function () {
+        expect(Account::select(['Id'])->whereIntegerInRaw('NumberOfEmployees', [])->toSql())
+            ->toBe('select Id from Account where Id = null');
+        expect(Account::select(['Id'])->whereIntegerNotInRaw('NumberOfEmployees', [])->toSql())
+            ->toBe('select Id from Account where Id != null');
+        expect(Account::select(['Id'])->whereIntegerInRaw('NumberOfEmployees', [1, 2])->toSql())
+            ->toBe('select Id from Account where NumberOfEmployees in (1, 2)');
+    });
+
+    it('compiles whereBetween to a pair of comparisons', function () {
+        expect(Account::select(['Id'])->whereBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe('select Id from Account where (AnnualRevenue >= 1 and AnnualRevenue <= 5)');
+        expect(Account::select(['Id'])->whereBetween('Name', ['a', 'm'])->toSql())
+            ->toBe("select Id from Account where (Name >= 'a' and Name <= 'm')");
+    });
+
+    it('compiles whereNotBetween and orWhereBetween', function () {
+        expect(Account::select(['Id'])->whereNotBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe('select Id from Account where (AnnualRevenue < 1 or AnnualRevenue > 5)');
+        expect(Account::select(['Id'])->where('Name', 'x')->orWhereBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe("select Id from Account where Name = 'x' or (AnnualRevenue >= 1 and AnnualRevenue <= 5)");
+    });
+
+    it('leaves datetime values in whereBetween unquoted', function () {
+        $sql = Account::select(['Id'])->whereBetween('CreatedDate', [
+            new DateTimeImmutable('2024-01-01T00:00:00Z'),
+            new DateTimeImmutable('2024-02-01T00:00:00Z'),
+        ])->toSql();
+
+        expect($sql)->toBe('select Id from Account where (CreatedDate >= 2024-01-01T00:00:00Z and CreatedDate <= 2024-02-01T00:00:00Z)');
+    });
+
+    it('throws for whereBetweenColumns, since SOQL cannot compare columns', function () {
+        expect(fn () => Account::select(['Id'])->whereBetweenColumns('AnnualRevenue', ['Min__c', 'Max__c'])->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support column-to-column comparisons');
+    });
+
+    it('throws for inRandomOrder()', function () {
+        expect(fn () => Account::select(['Id'])->inRandomOrder()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL has no random ordering');
+    });
+
+    it('throws for distinct()', function () {
+        expect(fn () => Account::select(['Name'])->distinct()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL has no DISTINCT');
+    });
+
+    it('compiles a distinct count to COUNT_DISTINCT', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with('select COUNT_DISTINCT(Industry) from Account')
+            ->andReturn(['totalSize' => 1, 'done' => true, 'records' => [['expr0' => 7]]]);
+
+        expect(Account::distinct()->count('Industry'))->toBe(7);
     });
 });

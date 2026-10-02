@@ -106,6 +106,7 @@ Lead::where('Email', $email)->exists();
 - `whereNull('X')` compiles to `X = null`, which is valid SOQL.
 - `chunk()` and `cursor()` work for large result sets.
 - `toSql()` returns the SOQL that would be sent, with bindings escaped the same way. To see queries that actually ran, read `app(SalesforceAdapter::class)->queryHistory()`.
+- `whereBetween()` / `whereNotBetween()` compile to `>=`/`<=` pairs, since SOQL has no `BETWEEN`.
 - Bindings are escaped automatically (quotes, backslashes, newlines). Never pre-escape values passed to `where()`.
 
 ### Not supported (these throw)
@@ -113,7 +114,9 @@ Lead::where('Email', $email)->exists();
 | Eloquent feature | Use instead |
 |---|---|
 | `has()`, `whereHas()`, `doesntHave()`, `withCount()` | A semi-join with `whereIn` and a closure (below) |
-| `whereColumn()` | A semi-join, or filter in PHP |
+| `whereColumn()`, `whereBetweenColumns()` | A semi-join, or filter in PHP |
+| `distinct()` | `groupBy('Field')`, or `distinct()->count('Field')` for `COUNT_DISTINCT()` |
+| `inRandomOrder()` | `->get()->shuffle()` |
 | `join()`, `leftJoin()`, `crossJoin()`, `joinSub()`, etc. | `with()` for child records, `select('Account.Name')` for parent fields, a semi-join to filter |
 | `$model->restore()` | Not possible through the REST API |
 | `->batch()` | `SalesforceBatch` |
@@ -180,7 +183,7 @@ class Contact extends SalesforceModel
 - `belongsTo` must always get the foreign key. Laravel's default (`account_Id`) does not exist in Salesforce.
 - Lazy loading (`$account->contacts`) and eager loading (`Account::with('contacts')->get()`) both work. Use eager loading for lists to avoid N+1 API calls.
 - `with()` loads `hasMany`/`hasOne` through a SOQL child subquery in the same API call: `select ..., (select ... from Contacts) from Account`. `where`/`orderBy`/`select`/`limit` in the closure go into the subquery, and `limit()` is per parent.
-- `belongsTo`, `load()`/`loadMissing()` on an existing collection, and closures using `offset()`/grouping/`distinct()` fall back to `WHERE ... IN (...)` queries, one per 200 parents. Prefer `with()` before `get()` for `hasMany`/`hasOne`. `limit()` in a `hasMany`/`hasOne` closure on this path throws.
+- `belongsTo`, `load()`/`loadMissing()` on an existing collection, and closures using `offset()`/grouping fall back to `WHERE ... IN (...)` queries, one per 200 parents. Prefer `with()` before `get()` for `hasMany`/`hasOne`. `limit()` in a `hasMany`/`hasOne` closure on this path throws.
 - Set `eager_load_strategy` to `query` in the config to always use the fallback.
 
 ## Creating, updating, deleting

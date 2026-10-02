@@ -411,10 +411,8 @@ describe('where clauses', function () {
 
         $query = Account::whereBetween('AnnualRevenue', [1000000, 5000000])->toSql();
 
-        // Laravel generates "between X and Y" syntax
-        expect($query)->toContain('between');
-        expect($query)->toContain('1000000');
-        expect($query)->toContain('5000000');
+        // SOQL has no BETWEEN, so it compiles to a pair of comparisons
+        expect($query)->toContain('where (AnnualRevenue >= 1000000 and AnnualRevenue <= 5000000)');
     });
 
     it('supports where with operators', function () {

@@ -370,9 +370,10 @@ public function monthlyRevenueReport($year)
 ```php
 public function industryAnalysis()
 {
+    // SOQL has no DISTINCT; group by the field instead
     $industries = Account::select('Industry')
-        ->distinct()
         ->whereNotNull('Industry')
+        ->groupBy('Industry')
         ->pluck('Industry');
 
     $analysis = [];

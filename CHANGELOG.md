@@ -11,7 +11,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
     - Relationship names come from describe metadata (new `AdapterInterface::childRelationshipName()`), so custom objects use their real `__r` name.
     - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery, and `limit()` now applies per parent.
     - Paged child results are followed, so every child is loaded. This also applies to raw `SalesforceAdapter::query()` results with subqueries.
-    - `belongsTo`, and closures using `offset()`/grouping/`distinct()`, keep using a separate query.
+    - `belongsTo`, and closures using `offset()` or grouping, keep using a separate query.
     - When the separate query is used (`belongsTo`, `load()`/`loadMissing()`, and fallbacks), the parent Ids are sent in groups of 200, one query per group, instead of one list that fails at around 600.
     - New config key `eager_load_strategy` (`subquery` by default, or `query` for the old behaviour), with env var `SALESFORCE_EAGER_LOAD_STRATEGY`.
 
@@ -21,6 +21,12 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Fixed
 
+- **Builder methods that produced SQL-only syntax now produce valid SOQL, or throw a clear error:**
+    - `whereIn()`/`whereNotIn()` with `null` in the list sent a raw `?`; they now send `null`.
+    - An empty `whereNotIn()` (and an empty `whereIntegerInRaw()`/`whereIntegerNotInRaw()`) sent `1 = 1` / `0 = 1`; they now send `Id != null` / `Id = null`.
+    - `whereBetween()` / `whereNotBetween()` sent `BETWEEN`, which SOQL doesn't have; they now compile to `(X >= min and X <= max)` / `(X < min or X > max)`.
+    - `distinct()->count('Field')` sent `COUNT(distinct Field)`; it now sends `COUNT_DISTINCT(Field)`.
+    - `distinct()`, `inRandomOrder()`, `whereBetweenColumns()` and `whereValueBetween()` now throw `InvalidArgumentException`, with what to use instead.
 - **Error messages say what went wrong.** A Salesforce error with a non-JSON body (an HTML error page, or none) used to read `Query failed: null`. It now gives the HTTP status and body, e.g. `Query failed: HTTP 414 Request-URI Too Large (the request is too long: ...)`. Salesforce's JSON errors read `ERROR_CODE: message (HTTP 400)` instead of a pretty-printed JSON dump.
 - **`simplePaginate()` no longer skips a record on every page.** The offset was calculated from `perPage + 1`, so page 2 at 20 per page started at row 21.
 - **A query with no results is no longer mistaken for a COUNT** when a value in its WHERE clause contains `COUNT(`. Before, it returned one phantom model.

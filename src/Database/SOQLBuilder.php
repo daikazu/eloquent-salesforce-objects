@@ -676,10 +676,7 @@ class SOQLBuilder extends Builder
         //   unexpected token: 'Some__r.Field__c'
         // Eloquent's has()/whereHas()/doesntHave()/withCount() also compile to whereColumn,
         // so this is where they fail too. Suggest the semi-join SOQL does support.
-        throw new InvalidArgumentException(
-            'SOQL does not support column-to-column comparisons (whereColumn, has, whereHas, doesntHave, withCount). ' .
-            'Use a semi-join instead: ->whereIn(\'Id\', fn ($q) => $q->select(\'Lookup__c\')->from(\'Child__c\')->where(...)).'
-        );
+        throw new InvalidArgumentException(SOQLGrammar::COLUMN_COMPARISON_UNSUPPORTED);
     }
 
     /**

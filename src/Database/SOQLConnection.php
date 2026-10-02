@@ -248,7 +248,8 @@ class SOQLConnection extends Connection
      */
     public function substituteBindings(string $query, array $bindings): string
     {
-        $bindings = $this->prepareBindings($bindings);
+        // SOQL's null literal, e.g. whereIn('Name', ['a', null]) -> Name in ('a', null)
+        $bindings = array_map(fn ($value) => $value ?? 'null', $this->prepareBindings($bindings));
 
         return Str::replaceArray('?', $bindings, $query);
     }

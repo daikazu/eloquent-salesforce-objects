@@ -118,6 +118,9 @@ class SOQLGrammar extends Grammar
         return $this->isExpression($value) ? $this->getValue($value) : '?';
     }
 
+    /**
+     * An empty IN list matches nothing. Every record has an Id, so "Id = null" is always false.
+     */
     protected function whereIn(Builder $query, $where): string
     {
         if (! empty($where['values'])) {
@@ -128,12 +131,82 @@ class SOQLGrammar extends Grammar
     }
 
     /**
+     * An empty NOT IN list matches everything; "Id != null" is always true. (SQL's "1 = 1" isn't valid SOQL.)
+     */
+    protected function whereNotIn(Builder $query, $where): string
+    {
+        if (! empty($where['values'])) {
+            return $this->wrap($where['column']) . ' not in (' . $this->parameterize($where['values']) . ')';
+        }
+
+        return 'Id != null';
+    }
+
+    protected function whereInRaw(Builder $query, $where): string
+    {
+        return empty($where['values']) ? 'Id = null' : parent::whereInRaw($query, $where);
+    }
+
+    protected function whereNotInRaw(Builder $query, $where): string
+    {
+        return empty($where['values']) ? 'Id != null' : parent::whereNotInRaw($query, $where);
+    }
+
+    /**
+     * SOQL has no BETWEEN, so compile to a pair of comparisons.
+     */
+    protected function whereBetween(Builder $query, $where): string
+    {
+        $values = array_values(is_array($where['values']) ? $where['values'] : iterator_to_array($where['values']));
+        $column = $this->wrap($where['column']);
+
+        // Date columns take unquoted literals, as in whereBasic()
+        [$min, $max] = $this->isDate($where['column'])
+            ? ['?', '?']
+            : [$this->parameter($values[0]), $this->parameter($values[count($values) - 1])];
+
+        return $where['not']
+            ? "({$column} < {$min} or {$column} > {$max})"
+            : "({$column} >= {$min} and {$column} <= {$max})";
+    }
+
+    protected function whereBetweenColumns(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(self::COLUMN_COMPARISON_UNSUPPORTED);
+    }
+
+    protected function whereValueBetween(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(self::COLUMN_COMPARISON_UNSUPPORTED);
+    }
+
+    public function compileRandom($seed): string
+    {
+        throw new InvalidArgumentException('SOQL has no random ordering. Shuffle the results in PHP instead: ->get()->shuffle().');
+    }
+
+    protected function compileColumns(Builder $query, $columns): ?string
+    {
+        if ($query->aggregate === null && $query->distinct) {
+            throw new InvalidArgumentException(
+                'SOQL has no DISTINCT. Use groupBy() on the field instead, or ->distinct()->count(\'Field\') for COUNT_DISTINCT().'
+            );
+        }
+
+        return parent::compileColumns($query, $columns);
+    }
+
+    /**
      * SOQL has no joins. It can only follow relationships Salesforce defines, and
      * child records come back nested rather than as flat joined rows.
      */
     public const string JOINS_UNSUPPORTED = 'SOQL does not support joins. '
         . 'Load child records with ->with(\'contacts\'), select parent fields with dot notation (->select(\'Account.Name\')), '
         . 'or filter by related records with a semi-join: ->whereIn(\'Id\', fn ($q) => $q->select(\'AccountId\')->from(\'Contact\')->where(...)).';
+
+    public const string COLUMN_COMPARISON_UNSUPPORTED = 'SOQL does not support column-to-column comparisons '
+        . '(whereColumn, whereBetweenColumns, has, whereHas, doesntHave, withCount). '
+        . 'Use a semi-join instead: ->whereIn(\'Id\', fn ($q) => $q->select(\'Lookup__c\')->from(\'Child__c\')->where(...)).';
 
     /**
      * Reject joins that reach the grammar without going through SOQLBuilder.
@@ -180,17 +253,19 @@ class SOQLGrammar extends Grammar
             }
         }
 
-        // If the query has a "distinct" constraint, and we're not asking for all columns,
-        // we need to prepend "distinct" onto the column name so that the query takes
-        // it into account when it performs the aggregating operations on the data.
-        if ($query->distinct && $column !== '' && $column !== '*') {
-            $column = 'distinct ' . $column;
+        $function = strtoupper($aggregate['function']);
+
+        // SOQL spells a distinct count COUNT_DISTINCT(field); other aggregates have no distinct form
+        if ($query->distinct && $column !== '') {
+            if ($function !== 'COUNT') {
+                throw new InvalidArgumentException("SOQL has no distinct form of {$function}().");
+            }
+
+            $function = 'COUNT_DISTINCT';
         }
 
-        // Build the function call
-        // SOQL automatically assigns aliases like expr0, expr1, etc. to aggregate results
-        // We don't specify the alias in the query - Salesforce adds it automatically
-        $function = strtoupper($aggregate['function']) . '(' . $column . ')';
+        // SOQL assigns aliases (expr0, expr1, ...) to aggregate results itself
+        $function .= '(' . $column . ')';
 
         return 'select ' . $function;
     }
