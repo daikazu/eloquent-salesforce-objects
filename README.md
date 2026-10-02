@@ -107,6 +107,7 @@ See the [Quickstart Guide](docs/quickstart.md) for a full walkthrough.
 
 - [Configuration Reference](docs/configuration.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Upgrading from 1.x to 2.0](docs/upgrading.md)
 - [Migrating from EloquentSalesForce](docs/migration-from-eloquent-salesforce.md)
 
 ## AI Agent Skills (Laravel Boost)

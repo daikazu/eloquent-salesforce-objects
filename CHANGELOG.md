@@ -4,6 +4,8 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ## Unreleased
 
+This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](docs/upgrading.md) for what to change.
+
 ### Added
 
 - **`SalesforceException::$statusCode` and `::$errorCode`** expose the HTTP status and Salesforce error code (e.g. `REQUEST_LIMIT_EXCEEDED`) of a failed call.
