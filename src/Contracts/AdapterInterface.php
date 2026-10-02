@@ -89,6 +89,14 @@ interface AdapterInterface
     public function resolveFields(string | object $object, array $columns = ['*']): array;
 
     /**
+     * Get the child relationship name used in parent-to-child subqueries (e.g. "Contacts")
+     *
+     * @param  string|object  $parent  Parent object name or model
+     * @return string|null Null when the relationship doesn't exist or can't be queried
+     */
+    public function childRelationshipName(string | object $parent, string $childObject, string $field): ?string;
+
+    /**
      * The SOQL statements executed through this adapter
      *
      * @return Collection<int, string>

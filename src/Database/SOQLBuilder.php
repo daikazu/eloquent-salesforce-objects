@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use BadMethodCallException;
+use Closure;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
@@ -12,7 +13,9 @@ use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
@@ -24,6 +27,16 @@ class SOQLBuilder extends Builder
     protected array $noSoftDeletes;
     protected int $bulkOperationSize;
     protected bool $shouldIgnoreDefaults = false;
+
+    /**
+     * Relationships the last getModels() call loaded through child subqueries.
+     *
+     * @var array<int, string>
+     */
+    protected array $subqueryEagerLoaded = [];
+
+    /** Salesforce allows at most 20 parent-to-child subqueries per query. */
+    private const int MAX_CHILD_SUBQUERIES = 20;
     private SOQLGrammar $soqlGrammar;
 
     public function __construct(
@@ -95,11 +108,203 @@ class SOQLBuilder extends Builder
 
     public function getModels($columns = ['*']): array
     {
+        $columns = $this->resolveSelectColumns($columns);
+
+        $this->subqueryEagerLoaded = [];
+        $subqueries = $this->buildChildSubqueries();
+
+        if ($subqueries === []) {
+            return parent::getModels($columns);
+        }
+
+        // Add the child subqueries to the select list for this one query only
+        $original = $this->query->columns;
+        $selected = ($original === null || in_array('*', $original)) ? $columns : $original;
+
+        $this->query->columns = [
+            ...$selected,
+            ...array_map(fn (array $subquery): Expression => new Expression("({$subquery['soql']})"), $subqueries),
+        ];
+
+        try {
+            $models = parent::getModels($columns);
+        } finally {
+            $this->query->columns = $original;
+        }
+
+        $this->subqueryEagerLoaded = array_keys($subqueries);
+
+        return $this->hydrateChildSubqueries($models, $subqueries);
+    }
+
+    /**
+     * Eager load the relationships that getModels() didn't already load through a subquery.
+     */
+    public function eagerLoadRelations(array $models)
+    {
+        if ($this->subqueryEagerLoaded === []) {
+            return parent::eagerLoadRelations($models);
+        }
+
+        $eagerLoad = $this->eagerLoad;
+
+        $this->eagerLoad = array_filter(
+            $eagerLoad,
+            fn (string $name): bool => ! in_array(explode('.', $name)[0], $this->subqueryEagerLoaded, true),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        try {
+            return parent::eagerLoadRelations($models);
+        } finally {
+            $this->eagerLoad = $eagerLoad;
+            $this->subqueryEagerLoaded = [];
+        }
+    }
+
+    /**
+     * Expand ['*'] to the model's default columns, or to every field.
+     *
+     * @return array<int, mixed>
+     */
+    protected function resolveSelectColumns(array $columns): array
+    {
         if (in_array('*', $columns)) {
             $columns = $this->resolveDefaultColumns() ?? $columns;
         }
 
-        return parent::getModels($this->getSalesForceColumns($columns));
+        return $this->getSalesForceColumns($columns);
+    }
+
+    /**
+     * Build a parent-to-child subquery for each eager-loaded hasMany/hasOne that SOQL can
+     * express that way. The rest are left for the normal "where key in (...)" eager load.
+     *
+     * @return array<string, array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}>
+     */
+    protected function buildChildSubqueries(): array
+    {
+        if (config('eloquent-salesforce-objects.eager_load_strategy', 'subquery') !== 'subquery'
+            || ! $this->model instanceof SalesforceModel) {
+            return [];
+        }
+
+        $subqueries = [];
+
+        foreach ($this->eagerLoad as $name => $constraints) {
+            if (str_contains($name, '.') || count($subqueries) >= self::MAX_CHILD_SUBQUERIES) {
+                continue;
+            }
+
+            $subquery = $this->buildChildSubquery($name, $constraints);
+
+            if ($subquery !== null) {
+                $subqueries[$name] = $subquery;
+            }
+        }
+
+        return $subqueries;
+    }
+
+    /**
+     * @return array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}|null
+     */
+    protected function buildChildSubquery(string $name, Closure $constraints): ?array
+    {
+        // getRelation() also queues nested relations ("contacts.cases") on the child query
+        $relation = $this->getRelation($name);
+
+        if (! ($relation instanceof SOQLHasMany || $relation instanceof SOQLHasOne)
+            || ! $relation->getRelated() instanceof SalesforceModel
+            || $relation->getLocalKeyName() !== 'Id') {
+            return null;
+        }
+
+        $relationshipName = $this->adapter->childRelationshipName(
+            $this->model,
+            $relation->getRelated()->getTable(),
+            $relation->getForeignKeyName()
+        );
+
+        if ($relationshipName === null) {
+            return null;
+        }
+
+        $constraints($relation);
+
+        /** @var SOQLBuilder $child */
+        $child = $relation->getQuery();
+        $query = $child->applyScopes()->getQuery()->clone();
+
+        // Subqueries can't use these; leave the relationship to the normal eager load
+        if ($query->offset !== null || $query->unions !== null || $query->aggregate !== null
+            || ! empty($query->groups) || ! empty($query->havings) || ! empty($query->joins)
+            || $query->distinct !== false || $query->lock !== null) {
+            return null;
+        }
+
+        // limit() on an eager-loaded relation sets a per-parent group limit, which a
+        // subquery LIMIT gives us directly. A hasOne only ever needs one row.
+        $limit = $query->groupLimit['value'] ?? $query->limit;
+        $query->groupLimit = null;
+        $query->limit = $relation instanceof SOQLHasOne ? 1 : $limit;
+
+        $query->columns = $child->resolveSelectColumns($query->columns ?? ['*']);
+        $query->from = $relationshipName;
+
+        /** @var SOQLConnection $connection */
+        $connection = $query->getConnection();
+
+        return [
+            'relation' => $relation,
+            'child'    => $child,
+            'key'      => $relationshipName,
+            'soql'     => $connection->substituteBindings($query->getGrammar()->compileSelect($query), $query->getBindings()),
+        ];
+    }
+
+    /**
+     * Turn the nested subquery results on each parent into loaded relations.
+     *
+     * @param  array<int, Model>  $models
+     * @param  array<string, array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}>  $subqueries
+     * @return array<int, Model>
+     */
+    protected function hydrateChildSubqueries(array $models, array $subqueries): array
+    {
+        foreach ($subqueries as $name => ['relation' => $relation, 'child' => $child, 'key' => $key]) {
+            $relation->initRelation($models, $name);
+
+            $children = [];
+
+            foreach ($models as $model) {
+                $attributes = $model->getAttributes();
+                $rows = $attributes[$key] ?? null;
+
+                // The raw nested result isn't a field; keep it out of attributes and saves
+                unset($attributes[$key]);
+                $model->setRawAttributes($attributes, true);
+
+                if (! is_array($rows) || $rows === []) {
+                    continue;
+                }
+
+                $related = $child->hydrate($rows)->all();
+
+                $model->setRelation($name, $relation instanceof SOQLHasOne
+                    ? $related[0]
+                    : $relation->getRelated()->newCollection($related));
+
+                array_push($children, ...$related);
+            }
+
+            // Nested relations ("opportunities.lineItems") load on the children in one go
+            if ($children !== []) {
+                $child->eagerLoadRelations($children);
+            }
+        }
+
+        return $models;
     }
 
     public function cursor()
@@ -548,10 +753,8 @@ class SOQLBuilder extends Builder
      */
     public function exists(): bool
     {
-        // Clone the query to avoid mutating the builder's limit state
-        $query = $this->clone();
-
-        $results = $query->limit(1)->get(['Id']);
+        // Query the base builder on a clone: no eager loads, and the limit doesn't stick
+        $results = $this->clone()->toBase()->limit(1)->get(['Id']);
 
         return count($results) > 0;
     }

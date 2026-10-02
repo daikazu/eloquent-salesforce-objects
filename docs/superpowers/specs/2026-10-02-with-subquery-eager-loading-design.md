@@ -124,10 +124,14 @@ from Contact where AccountId in (...)) as laravel_table where laravel_row <= 1 o
 
 Salesforce rejects this. Phase 1 fixes it with a per-parent `LIMIT` in the subquery. The fallback path still needs a fix of its own: either throw a clear error from `SOQLGrammar` for `groupLimit`, or drop the group limit and trim per parent in PHP.
 
-**IN-list growth:** each parent adds about 22 characters to the eager query, and about 27 bytes once URL-encoded, because Forrest sends SOQL as a GET query string. Where that breaks depends on Salesforce's SOQL-length and request-URI limits, which still need measuring against a sandbox.
+**IN-list ceiling, measured against a sandbox:** `Account::select(['Id'])->limit($n)->get()->load('contacts')` works at 400 parents and **fails at 600**. Each parent adds about 22 characters (about 27 bytes URL-encoded, because Forrest sends SOQL as a GET query string). The Contact `*` column list adds about 4 KB more, so objects with many fields fail sooner. That's a realistic size, so per decision 1 the subquery strategy is **on by default**.
+
+**Unhelpful error:** the failure surfaced as `Query failed: null`. The underlying HTTP error (most likely URI too long) is lost when `SalesforceAdapter` wraps the exception. That's a separate fix.
+
+**Fallback still has the ceiling:** relationships that can't use a subquery (and `belongsTo`, until phase 3) still send IN lists. Splitting a long IN list into several queries in the fallback path is a follow-up.
 
 ## Decisions (2026-10-02)
 
-1. **Default:** on by default, with `eager_load_strategy = query` as the escape hatch, if phase 0 shows today's path fails at realistic sizes. Otherwise opt-in for one release.
+1. **Default:** on by default, with `eager_load_strategy = query` as the escape hatch. Phase 0 showed today's path fails at 600 parents.
 2. **`cursor()` / `lazy()`:** not in v1. Keep Laravel's behaviour of ignoring `with()` there.
 3. **`belongsTo` through dot notation (phase 3):** later, not part of this round.

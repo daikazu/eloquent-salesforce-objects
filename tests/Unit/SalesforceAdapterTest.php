@@ -498,3 +498,39 @@ describe('describe', function () {
         expect($contactResult['name'])->toBe('Contact');
     });
 });
+
+// ---------------------------------------------------------------------------
+// childRelationshipName
+// ---------------------------------------------------------------------------
+
+describe('childRelationshipName', function () {
+    beforeEach(function () {
+        Cache::flush();
+
+        Forrest::shouldReceive('describe')->with('Account')->andReturn([
+            'fields'             => [],
+            'childRelationships' => [
+                ['childSObject' => 'Contact', 'field' => 'AccountId', 'relationshipName' => 'Contacts'],
+                ['childSObject' => 'Contact', 'field' => 'Billing_Account__c', 'relationshipName' => 'Billed_Contacts__r'],
+                ['childSObject' => 'AccountHistory', 'field' => 'AccountId', 'relationshipName' => null],
+            ],
+        ]);
+    });
+
+    it('returns the relationship name for a child object and lookup field', function () {
+        expect($this->adapter->childRelationshipName('Account', 'Contact', 'AccountId'))->toBe('Contacts');
+    });
+
+    it('distinguishes several relationships to the same child object by field', function () {
+        expect($this->adapter->childRelationshipName('Account', 'Contact', 'Billing_Account__c'))->toBe('Billed_Contacts__r');
+    });
+
+    it('accepts a model class for the parent', function () {
+        expect($this->adapter->childRelationshipName(Account::class, 'Contact', 'AccountId'))->toBe('Contacts');
+    });
+
+    it('returns null when the relationship is not queryable or does not exist', function () {
+        expect($this->adapter->childRelationshipName('Account', 'AccountHistory', 'AccountId'))->toBeNull();
+        expect($this->adapter->childRelationshipName('Account', 'Case', 'AccountId'))->toBeNull();
+    });
+});

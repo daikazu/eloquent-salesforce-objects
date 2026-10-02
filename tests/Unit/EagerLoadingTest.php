@@ -1,17 +1,20 @@
 <?php
 
 /**
- * Characterization tests for eager loading (with()) as it works today: one
- * extra query per relationship, constrained by "<foreign key> in (<parent ids>)".
+ * Eager loading (with()) tests. See
+ * docs/superpowers/specs/2026-10-02-with-subquery-eager-loading-design.md.
  *
- * Phase 0 of docs/superpowers/specs/2026-10-02-with-subquery-eager-loading-design.md.
- * These pin current behaviour so the subquery strategy can be checked against it.
+ * fakeSalesforceTables() describes objects without childRelationships, so those
+ * tests exercise the fallback strategy: one extra query per relationship,
+ * constrained by "<foreign key> in (<parent ids>)". The subquery strategy tests
+ * at the bottom use describe data that includes childRelationships.
  */
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Examples\Opportunity;
 use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\AccountWithPrimaryContact;
+use Illuminate\Support\Facades\Cache;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -174,18 +177,13 @@ describe('with() — hasMany', function () {
         expect(strlen($queries[1]))->toBeGreaterThan(1000 * 22);
     });
 
-    // Known bug, fixed by phase 1: Laravel turns limit() inside an eager-load
-    // closure into a row_number() window function, which SOQL doesn't have.
-    it('compiles limit() in the closure to a window function Salesforce rejects', function () {
+    it('throws a clear error for limit() in the closure, since SOQL has no per-parent limit outside a subquery', function () {
         $queries = fakeSalesforceTables(eagerTables());
 
-        try {
-            Account::with(['contacts' => fn ($q) => $q->limit(1)])->get();
-        } catch (Throwable) {
-            // The fake can't parse the result either; the SOQL sent is what matters
-        }
+        expect(fn () => Account::with(['contacts' => fn ($q) => $q->limit(1)])->get())
+            ->toThrow(InvalidArgumentException::class, 'limit() on an eager-loaded relationship');
 
-        expect($queries[1] ?? '')->toContain('row_number() over (partition by');
+        expect($queries)->toHaveCount(1);
     });
 });
 
@@ -225,5 +223,214 @@ describe('load() on an existing collection', function () {
         expect($queries)->toHaveCount(2);
         expect($queries[1])->toEndWith(" from Contact where AccountId in ('001A', '001B', '001C')");
         expect($accounts->firstWhere('Id', '001A')->contacts)->toHaveCount(2);
+    });
+});
+
+// ===========================================================================
+// Subquery strategy: children come back nested in the parent query
+// ===========================================================================
+
+/**
+ * Describe data with childRelationships, plus a query fake that returns
+ * $response for every query and records the SOQL it receives.
+ */
+function fakeSubquerySalesforce(array ...$responses): ArrayObject
+{
+    $queries = new ArrayObject;
+
+    Forrest::shouldReceive('hasToken')->andReturn(true);
+    Forrest::shouldReceive('describe')->andReturnUsing(fn ($object) => [
+        'fields'             => array_map(fn ($name) => ['name' => $name], ['Id', 'Name', 'AccountId', 'LastName', 'Opportunity__c']),
+        'childRelationships' => match ($object) {
+            'Account' => [
+                ['childSObject' => 'Contact', 'field' => 'AccountId', 'relationshipName' => 'Contacts'],
+                ['childSObject' => 'Opportunity', 'field' => 'AccountId', 'relationshipName' => 'Opportunities'],
+            ],
+            'Opportunity' => [
+                ['childSObject' => 'Opportunity_Product__c', 'field' => 'Opportunity__c', 'relationshipName' => 'Line_Items__r'],
+            ],
+            default => [],
+        },
+    ]);
+
+    Forrest::shouldReceive('query')->andReturnUsing(function (string $soql) use ($queries, &$responses) {
+        $queries[] = $soql;
+
+        $records = array_shift($responses) ?? [];
+
+        return ['totalSize' => count($records), 'done' => true, 'records' => $records];
+    });
+
+    return $queries;
+}
+
+/** A nested relationship result, as Salesforce returns it inside a parent row. */
+function nested(array $records): ?array
+{
+    return $records === [] ? null : ['totalSize' => count($records), 'done' => true, 'records' => $records];
+}
+
+function accountsWithContacts(): array
+{
+    return [
+        ['Id' => '001A', 'Name' => 'Acme', 'Contacts' => nested([
+            ['Id' => '003A', 'LastName' => 'Adams', 'AccountId' => '001A'],
+            ['Id' => '003B', 'LastName' => 'Baker', 'AccountId' => '001A'],
+        ])],
+        ['Id' => '001C', 'Name' => 'Initech', 'Contacts' => null],
+    ];
+}
+
+describe('with() — subquery strategy', function () {
+    beforeEach(function () {
+        Cache::flush();
+    });
+
+    it('loads children in the same query as the parents', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        $accounts = Account::with('contacts')->get()->keyBy('Id');
+
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toContain(', (select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, AccountId, LastName, Opportunity__c from Contacts) from Account');
+        expect($accounts['001A']->contacts->pluck('LastName')->all())->toBe(['Adams', 'Baker']);
+        expect($accounts['001A']->contacts->first())->toBeInstanceOf(Contact::class);
+        expect($accounts['001C']->relationLoaded('contacts'))->toBeTrue();
+        expect($accounts['001C']->contacts)->toHaveCount(0);
+    });
+
+    it('keeps the raw nested result out of the parent attributes', function () {
+        fakeSubquerySalesforce(accountsWithContacts());
+
+        $account = Account::with('contacts')->get()->first();
+
+        expect($account->getAttributes())->not->toHaveKey('Contacts');
+        expect($account->getOriginal())->not->toHaveKey('Contacts');
+        expect($account->isDirty())->toBeFalse();
+        expect($account->toArray()['contacts'])->toHaveCount(2);
+    });
+
+    it('compiles closure constraints into the subquery, with escaping', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        Account::with(['contacts' => fn ($q) => $q->select(['Id', 'LastName'])
+            ->where('LastName', '!=', "O'Brien")
+            ->orderBy('LastName')])->get();
+
+        expect($queries[0])->toContain("(select Id, LastName from Contacts where LastName != 'O\\'Brien' order by LastName asc)");
+    });
+
+    it('applies limit() per parent', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        Account::with(['contacts' => fn ($q) => $q->select(['Id'])->orderBy('LastName')->limit(2)])->get();
+
+        expect($queries[0])->toContain('(select Id from Contacts order by LastName asc limit 2)');
+        expect($queries[0])->not->toContain('row_number');
+    });
+
+    it('loads hasOne with a limit of 1 and returns the child or null', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts());
+
+        $accounts = AccountWithPrimaryContact::with(['primaryContact' => fn ($q) => $q->select(['Id', 'LastName'])])->get()->keyBy('Id');
+
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toContain('(select Id, LastName from Contacts limit 1)');
+        expect($accounts['001A']->primaryContact->LastName)->toBe('Adams');
+        expect($accounts['001C']->primaryContact)->toBeNull();
+    });
+
+    it('uses the relationship name from describe for custom objects', function () {
+        $queries = fakeSubquerySalesforce([
+            ['Id' => '006A', 'Name' => 'Deal', 'Line_Items__r' => nested([
+                ['Id' => 'a01A', 'Name' => 'Widget', 'Opportunity__c' => '006A'],
+            ])],
+        ]);
+
+        $opportunity = Opportunity::with(['lineItems' => fn ($q) => $q->select(['Id', 'Name'])])->get()->first();
+
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toContain('(select Id, Name from Line_Items__r) from Opportunity');
+        expect($opportunity->lineItems->pluck('Name')->all())->toBe(['Widget']);
+    });
+
+    it('loads several relationships in one query', function () {
+        $queries = fakeSubquerySalesforce([
+            ['Id' => '001A', 'Contacts' => nested([['Id' => '003A']]), 'Opportunities' => nested([['Id' => '006A'], ['Id' => '006B']])],
+        ]);
+
+        $account = Account::select(['Id'])->with([
+            'contacts'      => fn ($q) => $q->select(['Id']),
+            'opportunities' => fn ($q) => $q->select(['Id']),
+        ])->get()->first();
+
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toBe('select Id, (select Id from Contacts), (select Id from Opportunities) from Account');
+        expect($account->contacts)->toHaveCount(1);
+        expect($account->opportunities)->toHaveCount(2);
+    });
+
+    it('loads the next level of a nested relationship with one more query', function () {
+        $queries = fakeSubquerySalesforce(
+            [['Id' => '001A', 'Opportunities' => nested([['Id' => '006A', 'AccountId' => '001A']])]],
+            [['Id' => 'a01A', 'Name' => 'Widget', 'Opportunity__c' => '006A']],
+        );
+
+        $account = Account::select(['Id'])->with('opportunities.lineItems')->get()->first();
+
+        expect($queries)->toHaveCount(2);
+        expect($queries[0])->toContain('from Opportunities) from Account');
+        expect($queries[1])->toEndWith(" from Opportunity_Product__c where Opportunity__c in ('006A')");
+        expect($account->opportunities->first()->lineItems->pluck('Name')->all())->toBe(['Widget']);
+    });
+
+    it('keeps with() on the builder, so running it twice loads both times', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts(), accountsWithContacts());
+
+        $builder = Account::with('contacts');
+        $builder->get();
+        $second = $builder->get()->first();
+
+        expect($queries)->toHaveCount(2);
+        expect($queries[1])->toContain('from Contacts)');
+        expect($second->contacts)->toHaveCount(2);
+    });
+
+    it('works with first()', function () {
+        $queries = fakeSubquerySalesforce(array_slice(accountsWithContacts(), 0, 1));
+
+        $account = Account::with('contacts')->first();
+
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toEndWith('from Contacts) from Account limit 1');
+        expect($account->contacts)->toHaveCount(2);
+    });
+
+    it('falls back to a separate query when the closure uses offset()', function () {
+        $queries = fakeSubquerySalesforce(accountsWithContacts(), []);
+
+        Account::with(['contacts' => fn ($q) => $q->offset(5)])->get();
+
+        expect($queries)->toHaveCount(2);
+        expect($queries[0])->not->toContain('from Contacts)');
+        expect($queries[1])->toContain(" from Contact where AccountId in ('001A', '001C')");
+    });
+
+    it('falls back to a separate query when eager_load_strategy is "query"', function () {
+        config(['eloquent-salesforce-objects.eager_load_strategy' => 'query']);
+        $queries = fakeSubquerySalesforce(accountsWithContacts(), []);
+
+        Account::with('contacts')->get();
+
+        expect($queries)->toHaveCount(2);
+        expect($queries[1])->toContain(" from Contact where AccountId in ('001A', '001C')");
+    });
+
+    it('does not eager load anything for exists()', function () {
+        $queries = fakeSubquerySalesforce([['Id' => '001A']]);
+
+        expect(Account::with('contacts')->exists())->toBeTrue();
+        expect($queries)->toHaveCount(1);
+        expect($queries[0])->toBe('select Id from Account limit 1');
     });
 });

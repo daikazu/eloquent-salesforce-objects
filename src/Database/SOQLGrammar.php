@@ -145,6 +145,20 @@ class SOQLGrammar extends Grammar
         throw new InvalidArgumentException(self::JOINS_UNSUPPORTED);
     }
 
+    /**
+     * limit() inside with() asks for a per-parent limit. SOQL can only do that in a
+     * child subquery, so reject it when the relationship falls back to a plain query.
+     */
+    protected function compileGroupLimit(Builder $query): string
+    {
+        throw new InvalidArgumentException(
+            'limit() on an eager-loaded relationship only works when it loads through a SOQL child subquery, '
+            . 'and this one could not: eager_load_strategy is "query", the relationship is not in Salesforce\'s '
+            . 'child relationships for the parent, or the closure uses offset(), grouping or distinct. '
+            . 'Remove limit() and trim the loaded collection instead.'
+        );
+    }
+
     protected function concatenateWhereClauses($query, $sql): string
     {
         $conjunction = 'where';

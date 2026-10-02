@@ -477,6 +477,31 @@ class SalesforceAdapter implements AdapterInterface
     }
 
     /**
+     * Get the child relationship name used in parent-to-child subqueries
+     *
+     * For example, Contact.AccountId on Account is "Contacts", and a custom lookup
+     * is usually "Something__r". Read from the parent's (cached) describe metadata.
+     *
+     * @param  string|object  $parent  Parent object name, SalesforceModel class string, or SalesforceModel instance
+     * @param  string  $childObject  Child object name, e.g. "Contact"
+     * @param  string  $field  The child's lookup field to the parent, e.g. "AccountId"
+     * @return string|null Null when the relationship doesn't exist or can't be queried
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function childRelationshipName(string | object $parent, string $childObject, string $field): ?string
+    {
+        foreach ($this->describe($parent)['childRelationships'] ?? [] as $relationship) {
+            if (($relationship['childSObject'] ?? null) === $childObject && ($relationship['field'] ?? null) === $field) {
+                return $relationship['relationshipName'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get updateable field names for a Salesforce object
      * Used to filter out read-only fields before create/update operations
      * Note: Salesforce API uses 'updateable' (their spelling) not 'updatable'
