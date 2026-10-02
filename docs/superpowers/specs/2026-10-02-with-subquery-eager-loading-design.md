@@ -87,7 +87,7 @@ After `parent::getModels()` returns, for each subquery relation on each parent m
 
 ## Phases
 
-**Status (2026-10-02):** phases 0, 1, 2 and 4 are done. Phase 3 (`belongsTo`) is deferred. Splitting long IN lists on the fallback path, and the `Query failed: null` error message, are open follow-ups.
+**Status (2026-10-02):** phases 0, 1, 2 and 4 are done. Phase 3 (`belongsTo`) is deferred. Long IN lists on the fallback path are split into groups of 200 (this covers `load()`, `loadMissing()` and `belongsTo`). The `Query failed: null` error message is still an open follow-up.
 
 | Phase | Scope | Size |
 |---|---|---|

@@ -37,6 +37,12 @@ class SOQLBuilder extends Builder
 
     /** Salesforce allows at most 20 parent-to-child subqueries per query. */
     private const int MAX_CHILD_SUBQUERIES = 20;
+
+    /**
+     * Parents per "where key in (...)" eager-load query. Forrest sends SOQL in the URL,
+     * and a real org rejected the request at ~600 Ids; 400 worked.
+     */
+    private const int EAGER_LOAD_CHUNK_SIZE = 200;
     private SOQLGrammar $soqlGrammar;
 
     public function __construct(
@@ -160,6 +166,30 @@ class SOQLBuilder extends Builder
             $this->eagerLoad = $eagerLoad;
             $this->subqueryEagerLoaded = [];
         }
+    }
+
+    /**
+     * Run the "where key in (...)" eager load in groups of parents, so the Id list
+     * stays within Salesforce's request size. A parent's children always come back
+     * in its own group, so per-parent ordering is unaffected.
+     *
+     * @param  array<int, Model>  $models
+     * @param  string  $name
+     * @return array<int, Model>
+     */
+    protected function eagerLoadRelation(array $models, $name, Closure $constraints)
+    {
+        if (count($models) <= self::EAGER_LOAD_CHUNK_SIZE) {
+            return parent::eagerLoadRelation($models, $name, $constraints);
+        }
+
+        $loaded = [];
+
+        foreach (array_chunk($models, self::EAGER_LOAD_CHUNK_SIZE) as $chunk) {
+            array_push($loaded, ...parent::eagerLoadRelation($chunk, $name, $constraints));
+        }
+
+        return $loaded;
     }
 
     /**

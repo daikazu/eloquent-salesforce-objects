@@ -167,14 +167,40 @@ describe('with() — hasMany', function () {
         expect($account->opportunities->first()->lineItems)->toHaveCount(2);
     });
 
-    it('embeds every parent Id in the eager query, so its length grows with the parent count', function () {
-        $accounts = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'Name' => "A{$i}"], range(1, 1000));
+    it('splits the parent Ids into groups of 200, one query per group', function () {
+        $accounts = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'Name' => "A{$i}"], range(1, 450));
+        $contacts = array_map(fn ($i) => ['Id' => sprintf('003xx%013d', $i), 'AccountId' => sprintf('001xx%013d', $i)], range(1, 450));
+        $queries = fakeSalesforceTables(['Account' => $accounts, 'Contact' => $contacts]);
+
+        $loaded = Account::with('contacts')->get();
+
+        $contactQueries = array_values(array_filter($queries->getArrayCopy(), fn ($q) => str_contains($q, ' from Contact ')));
+        expect($contactQueries)->toHaveCount(3);
+        expect(array_map(fn ($q) => substr_count($q, "'001xx"), $contactQueries))->toBe([200, 200, 50]);
+
+        expect($loaded)->toHaveCount(450);
+        expect($loaded->every(fn ($account) => $account->contacts->count() === 1
+            && $account->contacts->first()->AccountId === $account->Id))->toBeTrue();
+    });
+
+    it('splits the Ids for load() on an existing collection too', function () {
+        $accounts = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i)], range(1, 450));
         $queries = fakeSalesforceTables(['Account' => $accounts, 'Contact' => []]);
 
-        Account::with('contacts')->get();
+        Account::get()->load('contacts');
 
-        // 18-char Id + 2 quotes + ", " separator = 22 characters per parent
-        expect(strlen($queries[1]))->toBeGreaterThan(1000 * 22);
+        expect($queries)->toHaveCount(4);
+    });
+
+    it('splits the Ids for belongsTo', function () {
+        $contacts = array_map(fn ($i) => ['Id' => sprintf('003xx%013d', $i), 'AccountId' => sprintf('001xx%013d', $i)], range(1, 450));
+        $accounts = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'Name' => "A{$i}"], range(1, 450));
+        $queries = fakeSalesforceTables(['Contact' => $contacts, 'Account' => $accounts]);
+
+        $loaded = Contact::with('account')->get();
+
+        expect($queries)->toHaveCount(4);
+        expect($loaded->last()->account->Name)->toBe('A450');
     });
 
     it('throws a clear error for limit() in the closure, since SOQL has no per-parent limit outside a subquery', function () {

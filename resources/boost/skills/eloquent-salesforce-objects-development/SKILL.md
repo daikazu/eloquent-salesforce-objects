@@ -180,7 +180,7 @@ class Contact extends SalesforceModel
 - `belongsTo` must always get the foreign key. Laravel's default (`account_Id`) does not exist in Salesforce.
 - Lazy loading (`$account->contacts`) and eager loading (`Account::with('contacts')->get()`) both work. Use eager loading for lists to avoid N+1 API calls.
 - `with()` loads `hasMany`/`hasOne` through a SOQL child subquery in the same API call: `select ..., (select ... from Contacts) from Account`. `where`/`orderBy`/`select`/`limit` in the closure go into the subquery, and `limit()` is per parent.
-- `belongsTo`, and closures using `offset()`/grouping/`distinct()`, fall back to one `WHERE ... IN (...)` query per relationship. That breaks at around 600 parents (request too large), so chunk or paginate big lists. `limit()` in a `hasMany`/`hasOne` closure on this path throws.
+- `belongsTo`, `load()`/`loadMissing()` on an existing collection, and closures using `offset()`/grouping/`distinct()` fall back to `WHERE ... IN (...)` queries, one per 200 parents. Prefer `with()` before `get()` for `hasMany`/`hasOne`. `limit()` in a `hasMany`/`hasOne` closure on this path throws.
 - Set `eager_load_strategy` to `query` in the config to always use the fallback.
 
 ## Creating, updating, deleting

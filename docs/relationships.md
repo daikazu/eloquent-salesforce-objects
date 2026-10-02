@@ -228,7 +228,9 @@ That happens when:
 - the local key isn't `Id`
 - `eager_load_strategy` is set to `query` in the config
 
-That extra query lists every parent Id. Against a real org it failed at around 600 parents because the request was too large, so load very large result sets in chunks (`chunk()`, `paginate()`). On this path, `limit()` in a `hasMany`/`hasOne` closure throws an `InvalidArgumentException`, because SOQL has no per-parent limit outside a subquery; trim the loaded collection instead.
+`load()` and `loadMissing()` on a collection you already have also use this path, because the parents were fetched without the subquery; use `with()` before `get()` to get the single-query path.
+
+That extra query lists the parent Ids, so they're sent in groups of 200, one query per group: a real org rejected a single list of about 600. On this path, `limit()` in a `hasMany`/`hasOne` closure throws an `InvalidArgumentException`, because SOQL has no per-parent limit outside a subquery; trim the loaded collection instead.
 
 Nested relationships (`with('opportunities.lineItems')`) load the first level through the subquery and each deeper level with one more query.
 

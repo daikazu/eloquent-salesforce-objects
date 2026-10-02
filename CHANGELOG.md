@@ -11,6 +11,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
     - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery, and `limit()` now applies per parent.
     - Paged child results are followed, so every child is loaded. This also applies to raw `SalesforceAdapter::query()` results with subqueries.
     - `belongsTo`, and closures using `offset()`/grouping/`distinct()`, keep using a separate query.
+    - When the separate query is used (`belongsTo`, `load()`/`loadMissing()`, and fallbacks), the parent Ids are sent in groups of 200, one query per group, instead of one list that fails at around 600.
     - New config key `eager_load_strategy` (`subquery` by default, or `query` for the old behaviour), with env var `SALESFORCE_EAGER_LOAD_STRATEGY`.
 
 ### Security
