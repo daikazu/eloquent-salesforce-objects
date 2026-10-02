@@ -9,6 +9,9 @@ use Closure;
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -555,6 +558,102 @@ class SOQLBuilder extends Builder
     }
 
     /**
+     * Count the records a Composite SObject Collections response reports as saved.
+     * Without per-record results, assume the whole request succeeded.
+     */
+    protected function countSuccesses(mixed $response, int $requested): int
+    {
+        $saveResults = $this->extractSaveResults($response);
+
+        if ($saveResults === null) {
+            return $requested;
+        }
+
+        return count(array_filter($saveResults, fn ($result): bool => (bool) ($result['success'] ?? false)));
+    }
+
+    /**
+     * Update the records matching the query, 200 per Composite request.
+     *
+     * Like Laravel's query update(), this skips model events. Returns how many records saved.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function update(array $values): int
+    {
+        foreach ($values as $field => $value) {
+            if ($value instanceof Expression) {
+                throw new InvalidArgumentException(
+                    "Cannot update [{$field}] with a raw expression: Salesforce can't compute a field from its current value. "
+                    . 'Load the records, set the value and save() them instead.'
+                );
+            }
+        }
+
+        if ($values === []) {
+            return 0;
+        }
+
+        $ids = $this->toBase()->pluck('Id');
+
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        $values = array_map(
+            fn ($value) => $value instanceof DateTimeInterface
+                ? DateTimeImmutable::createFromInterface($value)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z')
+                : $value,
+            $values
+        );
+
+        $table = $this->model->getTable();
+        $updated = 0;
+
+        foreach ($ids->chunk($this->bulkOperationSize) as $chunk) {
+            $records = $chunk->map(fn ($id): array => ['Id' => $id] + $values)->values()->all();
+
+            try {
+                $updated += $this->countSuccesses($this->adapter->bulkUpdate($table, $records), count($records));
+            } catch (Exception $e) {
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk update');
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Set the given column(s) to the current time on the matching records.
+     *
+     * @param  string|array<int, string>|null  $column
+     */
+    public function touch($column = null)
+    {
+        $time = $this->model->freshTimestampString();
+
+        if ($column !== null) {
+            return $this->update(array_fill_keys((array) $column, $time));
+        }
+
+        // SalesforceModel has timestamps off: LastModifiedDate is set by Salesforce
+        if (! $this->model->usesTimestamps()) {
+            return false;
+        }
+
+        return $this->update([$this->model->getUpdatedAtColumn() => $time]);
+    }
+
+    /**
+     * Salesforce models have no soft-delete column to bypass, so this deletes like delete().
+     */
+    public function forceDelete(): int
+    {
+        return $this->delete();
+    }
+
+    /**
      * getSalesForceColumns function.
      */
     protected function getSalesForceColumns(array $columns, $table = null): array
@@ -602,14 +701,7 @@ class SOQLBuilder extends Builder
             try {
                 $response = $this->adapter->bulkDelete($table, $chunk->toArray(), $allOrNone);
 
-                $saveResults = $this->extractSaveResults($response);
-
-                if ($saveResults === null) {
-                    // No per-record results to inspect, so assume the whole chunk succeeded
-                    $deleted += $chunk->count();
-                } else {
-                    $deleted += count(array_filter($saveResults, fn ($result): bool => (bool) ($result['success'] ?? false)));
-                }
+                $deleted += $this->countSuccesses($response, $chunk->count());
             } catch (Exception $e) {
                 // Logs, then rethrows unless throw_exceptions is off
                 $this->handleSalesforceException($e, 'bulk delete');

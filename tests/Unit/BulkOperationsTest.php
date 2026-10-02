@@ -3,6 +3,7 @@
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
@@ -810,5 +811,93 @@ describe('adapter bulkUpdate', function () {
         Forrest::shouldReceive('patch')->never();
 
         expect(app(SalesforceAdapter::class)->bulkUpdate('Account', []))->toBe([]);
+    });
+});
+
+describe('query update(), touch() and forceDelete()', function () {
+    beforeEach(function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+    });
+
+    function idsResponse(int $count): array
+    {
+        return [
+            'totalSize' => $count,
+            'done'      => true,
+            'records'   => $count === 0 ? [] : array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'attributes' => ['type' => 'Account']], range(1, $count)),
+        ];
+    }
+
+    it('updates the matching records through bulk update and returns how many succeeded', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Id from Account where Industry = 'Tech'")
+            ->andReturn(idsResponse(3));
+
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects', Mockery::on(fn ($args) => $args['body']['records'] === [
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000001', 'Rating' => 'Hot'],
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000002', 'Rating' => 'Hot'],
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000003', 'Rating' => 'Hot'],
+            ]))
+            ->andReturn([
+                ['id' => '001xx0000000000001', 'success' => true],
+                ['id' => '001xx0000000000002', 'success' => false, 'errors' => [['statusCode' => 'FIELD_CUSTOM_VALIDATION_EXCEPTION']]],
+                ['id' => '001xx0000000000003', 'success' => true],
+            ]);
+
+        expect(Account::where('Industry', 'Tech')->update(['Rating' => 'Hot']))->toBe(2);
+    });
+
+    it('sends 200 records per request', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(450));
+        Forrest::shouldReceive('patch')->times(3)->andReturnUsing(
+            fn ($path, $args) => array_map(fn ($r) => ['id' => $r['Id'], 'success' => true], $args['body']['records'])
+        );
+
+        expect(Account::query()->update(['Rating' => 'Hot']))->toBe(450);
+    });
+
+    it('makes no update request when nothing matches', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(0));
+        Forrest::shouldReceive('patch')->never();
+
+        expect(Account::where('Name', 'Nobody')->update(['Rating' => 'Hot']))->toBe(0);
+    });
+
+    it('rejects raw expressions, since Salesforce cannot compute a field from itself', function () {
+        expect(fn () => Account::query()->update(['NumberOfEmployees' => new Expression('NumberOfEmployees + 1')]))
+            ->toThrow(InvalidArgumentException::class, 'raw expression');
+    });
+
+    it('logs a failed request and carries on when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(1));
+        Forrest::shouldReceive('patch')->once()->andThrow(new Exception('Update chunk failed'));
+
+        expect(Account::query()->update(['Rating' => 'Hot']))->toBe(0);
+        Log::shouldHaveReceived('error')->once()->withArgs(fn ($message, $context) => $context['operation'] === 'bulk update');
+    });
+
+    it('touch($column) sets the field to now on the matching records', function () {
+        Carbon\Carbon::setTestNow('2025-06-01 12:00:00');
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(1));
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects', Mockery::on(fn ($args) => $args['body']['records'][0]['Last_Contacted__c'] === '2025-06-01T12:00:00.000+0000'))
+            ->andReturn([['id' => '001xx0000000000001', 'success' => true]]);
+
+        expect(Account::query()->touch('Last_Contacted__c'))->toBe(1);
+        Carbon\Carbon::setTestNow();
+    });
+
+    it('forceDelete() deletes like delete()', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(2));
+        Forrest::shouldReceive('delete')->once()->andReturn([
+            ['id' => '001xx0000000000001', 'success' => true],
+            ['id' => '001xx0000000000002', 'success' => true],
+        ]);
+
+        expect(Account::query()->forceDelete())->toBe(2);
     });
 });
