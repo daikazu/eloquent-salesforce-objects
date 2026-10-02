@@ -7,6 +7,7 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -307,5 +308,58 @@ describe('getInstanceUrl', function () {
 
         expect(fn () => $this->manager->getInstanceUrl())
             ->toThrow(AuthenticationException::class, 'No valid Salesforce instance URL available');
+    });
+});
+
+describe('SOAP login() deprecation', function () {
+    it('detects the UserPasswordSoap flow, which uses SOAP API login()', function () {
+        config()->set('forrest.authentication', 'UserPasswordSoap');
+
+        expect($this->manager->usesSoapLogin())->toBeTrue();
+    });
+
+    it('does not flag OAuth flows', function (string $flow) {
+        config()->set('forrest.authentication', $flow);
+
+        expect($this->manager->usesSoapLogin())->toBeFalse();
+    })->with(['UserPassword', 'ClientCredentials', 'OAuthJWT', 'WebServer']);
+
+    it('logs a warning when authenticating with SOAP login()', function () {
+        config()->set('forrest.authentication', 'UserPasswordSoap');
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(false);
+        Forrest::shouldReceive('authenticate')->once();
+
+        $this->manager->ensureAuthenticated();
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn ($message) => str_contains($message, 'SOAP API login()'));
+    });
+
+    it('does not warn for OAuth flows', function () {
+        config()->set('forrest.authentication', 'ClientCredentials');
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(false);
+        Forrest::shouldReceive('authenticate')->once();
+
+        $this->manager->ensureAuthenticated();
+
+        Log::shouldNotHaveReceived('warning');
+    });
+
+    it('respects logging_channel = false', function () {
+        config()->set('forrest.authentication', 'UserPasswordSoap');
+        config()->set('eloquent-salesforce-objects.logging_channel', false);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(false);
+        Forrest::shouldReceive('authenticate')->once();
+
+        $this->manager->ensureAuthenticated();
+
+        Log::shouldNotHaveReceived('warning');
     });
 });

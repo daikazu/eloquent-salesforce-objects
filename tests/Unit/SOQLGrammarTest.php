@@ -1,9 +1,11 @@
 <?php
 
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLConnection;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Daikazu\EloquentSalesforceObjects\Examples\Contact;
+use Illuminate\Database\Query\Builder;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -231,6 +233,27 @@ describe('SOQLBuilder — whereColumn()', function () {
         expect($caught)->not->toBeNull();
         expect($caught->getMessage())->toContain('SOQL');
     });
+
+    it('suggests a whereIn semi-join rather than unsupported whereHas/has', function () {
+        $caught = null;
+
+        try {
+            Account::query()->whereColumn('Name', '=', 'Industry');
+        } catch (InvalidArgumentException $e) {
+            $caught = $e;
+        }
+
+        expect($caught->getMessage())
+            ->toContain("whereIn('Id'")
+            ->not->toContain('Use relationship constraints');
+    });
+});
+
+describe('SOQLBuilder — relationship existence queries', function () {
+    it('throws for whereHas() because it compiles to a column comparison', function () {
+        expect(fn () => Account::whereHas('contacts', fn ($q) => $q->where('Email', 'x'))->get(['Id']))
+            ->toThrow(InvalidArgumentException::class);
+    });
 });
 
 describe('SOQLBuilder — allColumns()', function () {
@@ -347,6 +370,45 @@ describe('SOQLBuilder — cursor() with defaultColumns', function () {
 
         iterator_to_array(Account::select(['Id', 'Name'])->cursor());
     });
+
+    it('includes the timestamp and soft-delete columns, like get() does', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, ')
+                && str_contains($q, ', CreatedDate, LastModifiedDate, IsDeleted from Account')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Account::cursor());
+    });
+
+    it('expands * to every field for a model without defaultColumns', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Contact')->andReturn([
+            'fields' => [['name' => 'Id'], ['name' => 'LastName']],
+        ]);
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with('select Id, CreatedDate, LastModifiedDate, IsDeleted, LastName from Contact')
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Contact::cursor());
+    });
+
+    it('expands * to every field after allColumns()', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with('select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, Industry from Account')
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        iterator_to_array(Account::allColumns()->cursor());
+    });
 });
 
 // ===========================================================================
@@ -398,15 +460,14 @@ describe('SOQLGrammar — compileAggregate with COUNT(*)', function () {
 });
 
 describe('SOQLGrammar — compileAggregate with distinct', function () {
-    it('prepends distinct to the column name for COUNT(DISTINCT …)', function () {
+    it('compiles a distinct count of a column to COUNT_DISTINCT(…)', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
 
         Forrest::shouldReceive('query')
             ->once()
             ->with(Mockery::on(function (string $soql): bool {
-                // Grammar produces: select COUNT(distinct Name) from Account
-                return str_contains($soql, 'COUNT(distinct Name)');
+                return $soql === 'select COUNT_DISTINCT(Name) from Account';
             }))
             ->andReturn([
                 'totalSize' => 3,
@@ -442,38 +503,26 @@ describe('SOQLGrammar — compileAggregate with distinct', function () {
 // SOQLGrammar — compileLock
 // ===========================================================================
 
-describe('SOQLGrammar — compileLock FOR UPDATE', function () {
-    it('appends FOR UPDATE to the compiled SOQL', function () {
+describe('SOQLGrammar — locking', function () {
+    beforeEach(function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
-
-        $sql = Account::lockForUpdate()->toSql();
-
-        expect($sql)->toContain('FOR UPDATE');
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
     });
 
-    it('places FOR UPDATE after the FROM clause', function () {
-        Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+    // Verified against a real org: "select Id from Account limit 1 for update" is
+    // rejected with MALFORMED_QUERY; row locking is Apex-only.
+    it('throws for lockForUpdate() and sharedLock(), since the API has no row locking', function (string $method) {
+        expect(fn () => Account::select(['Id'])->{$method}()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'Row locking (FOR UPDATE) is only available in Apex');
+    })->with(['lockForUpdate', 'sharedLock']);
 
-        $sql = Account::lockForUpdate()->toSql();
+    it('passes FOR VIEW and FOR REFERENCE through', function (string $clause) {
+        expect(Account::select(['Id'])->lock($clause)->toSql())->toBe("select Id from Account {$clause}");
+    })->with(['FOR VIEW', 'FOR REFERENCE']);
 
-        $fromPos = strpos($sql, 'from Account');
-        $lockPos = strpos($sql, 'FOR UPDATE');
-
-        expect($fromPos)->not->toBeFalse();
-        expect($lockPos)->not->toBeFalse();
-        expect($lockPos)->toBeGreaterThan($fromPos);
-    });
-
-    it('can be combined with WHERE clauses', function () {
-        Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
-
-        $sql = Account::where('Name', 'Acme')->lockForUpdate()->toSql();
-
-        expect($sql)->toContain('where');
-        expect($sql)->toContain('FOR UPDATE');
+    it('throws for any other lock string', function () {
+        expect(fn () => Account::select(['Id'])->lock('LOCK IN SHARE MODE')->toSql())
+            ->toThrow(InvalidArgumentException::class, 'FOR VIEW or FOR REFERENCE');
     });
 });
 
@@ -523,68 +572,152 @@ describe('SOQLGrammar — whereIn with empty values', function () {
 });
 
 // ===========================================================================
-// SOQLGrammar — grammarPlural (via toSql inspection is indirect;
-//                               tested via compileJoins through join())
+// SOQLBuilder — join() is not supported by SOQL
 // ===========================================================================
 
-describe('SOQLGrammar — grammarPlural pluralization rules', function () {
-    it('pluralizes a standard table name using Str::plural', function () {
-        // Verify via grammar directly: wrap in a minimal unit test.
-        // grammarPlural is private, so we exercise it via the public checkStringLiteral path.
-        // The most reliable surface is to verify the grammar instance method through reflection.
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
+describe('SOQLBuilder — join()', function () {
+    it('throws for every join variant, pointing to with() and parent fields', function (string $method, array $args) {
+        expect(fn () => Account::query()->{$method}(...$args))
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support joins');
+    })->with([
+        'join'          => ['join', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'leftJoin'      => ['leftJoin', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'rightJoin'     => ['rightJoin', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'crossJoin'     => ['crossJoin', ['Contact']],
+        'joinWhere'     => ['joinWhere', ['Contact', 'Contact.Name', '=', 'x']],
+        'leftJoinWhere' => ['leftJoinWhere', ['Contact', 'Contact.Name', '=', 'x']],
+    ]);
+
+    it('throws when a join added to the base query reaches the grammar', function () {
+        $connection = new SOQLConnection(Mockery::mock(AdapterInterface::class));
         $grammar = new SOQLGrammar($connection);
+        $connection->setGrammar($grammar);
 
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
+        $query = (new Builder($connection, $grammar))
+            ->from('Account')
+            ->join('Contact', 'Contact.AccountId', '=', 'Account.Id');
 
-        // Standard word: Contact -> Contacts
-        expect($method->invoke($grammar, 'Contact'))->toBe('Contacts');
+        expect(fn () => $query->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support joins');
     });
 
-    it('applies the special -try -> -tries rule for words ending exactly in "try"', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
+    it('still forwards other query builder methods', function () {
+        expect(Account::query()->whereIn('Id', ['001'])->getQuery()->wheres)->toHaveCount(1);
+    });
+});
 
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
+// ===========================================================================
+// SQL-only constructs: compile to SOQL equivalents, or throw a clear error
+// ===========================================================================
 
-        // A table name that truly ends with 'try' (e.g. a custom object suffixed with _try)
-        expect($method->invoke($grammar, 'Object_try'))->toBe('Object_tries');
-        expect($method->invoke($grammar, 'My_Custom_try'))->toBe('My_Custom_tries');
+describe('SOQLGrammar — SQL-only constructs', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
     });
 
-    it('does not apply the -try rule when the last three characters are not exactly "try"', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
-
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
-
-        // 'Country' ends with 'ntry', not 'try' — falls through to Str::plural
-        expect($method->invoke($grammar, 'Country'))->toBe('Countries');
-
-        // 'Entry' ends with 'ntry', not 'try' — falls through to Str::plural
-        expect($method->invoke($grammar, 'OpportunityLineItemEntry'))->toBe('OpportunityLineItemEntries');
+    it('renders null inside whereIn as the SOQL null literal', function () {
+        expect(Account::select(['Id'])->whereIn('Name', ['a', null])->toSql())
+            ->toBe("select Id from Account where Name in ('a', null)");
     });
 
-    it('falls through to Str::plural for words not ending in -try', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
+    it('sends null inside whereIn as null in the executed query', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Id from Account where Name not in ('a', null)")
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
 
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
-
-        expect($method->invoke($grammar, 'Account'))->toBe('Accounts');
-        expect($method->invoke($grammar, 'Opportunity'))->toBe('Opportunities');
-        expect($method->invoke($grammar, 'Lead'))->toBe('Leads');
+        Account::select(['Id'])->whereNotIn('Name', ['a', null])->get();
     });
+
+    it('compiles an empty whereNotIn to a condition that is always true', function () {
+        expect(Account::select(['Id'])->whereNotIn('Name', [])->toSql())
+            ->toBe('select Id from Account where Id != null');
+    });
+
+    it('compiles empty integer in/not-in lists to SOQL', function () {
+        expect(Account::select(['Id'])->whereIntegerInRaw('NumberOfEmployees', [])->toSql())
+            ->toBe('select Id from Account where Id = null');
+        expect(Account::select(['Id'])->whereIntegerNotInRaw('NumberOfEmployees', [])->toSql())
+            ->toBe('select Id from Account where Id != null');
+        expect(Account::select(['Id'])->whereIntegerInRaw('NumberOfEmployees', [1, 2])->toSql())
+            ->toBe('select Id from Account where NumberOfEmployees in (1, 2)');
+    });
+
+    it('compiles whereBetween to a pair of comparisons', function () {
+        expect(Account::select(['Id'])->whereBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe('select Id from Account where (AnnualRevenue >= 1 and AnnualRevenue <= 5)');
+        expect(Account::select(['Id'])->whereBetween('Name', ['a', 'm'])->toSql())
+            ->toBe("select Id from Account where (Name >= 'a' and Name <= 'm')");
+    });
+
+    it('compiles whereNotBetween and orWhereBetween', function () {
+        expect(Account::select(['Id'])->whereNotBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe('select Id from Account where (AnnualRevenue < 1 or AnnualRevenue > 5)');
+        expect(Account::select(['Id'])->where('Name', 'x')->orWhereBetween('AnnualRevenue', [1, 5])->toSql())
+            ->toBe("select Id from Account where Name = 'x' or (AnnualRevenue >= 1 and AnnualRevenue <= 5)");
+    });
+
+    it('leaves datetime values in whereBetween unquoted', function () {
+        $sql = Account::select(['Id'])->whereBetween('CreatedDate', [
+            new DateTimeImmutable('2024-01-01T00:00:00Z'),
+            new DateTimeImmutable('2024-02-01T00:00:00Z'),
+        ])->toSql();
+
+        expect($sql)->toBe('select Id from Account where (CreatedDate >= 2024-01-01T00:00:00Z and CreatedDate <= 2024-02-01T00:00:00Z)');
+    });
+
+    it('throws for whereBetweenColumns, since SOQL cannot compare columns', function () {
+        expect(fn () => Account::select(['Id'])->whereBetweenColumns('AnnualRevenue', ['Min__c', 'Max__c'])->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support column-to-column comparisons');
+    });
+
+    it('throws for inRandomOrder()', function () {
+        expect(fn () => Account::select(['Id'])->inRandomOrder()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL has no random ordering');
+    });
+
+    it('throws for distinct()', function () {
+        expect(fn () => Account::select(['Name'])->distinct()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL has no DISTINCT');
+    });
+
+    it('compiles a distinct count to COUNT_DISTINCT', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with('select COUNT_DISTINCT(Industry) from Account')
+            ->andReturn(['totalSize' => 1, 'done' => true, 'records' => [['expr0' => 7]]]);
+
+        expect(Account::distinct()->count('Industry'))->toBe(7);
+    });
+});
+
+describe('SOQLGrammar — more SQL-only constructs', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
+    });
+
+    it('throws for inOrderOf(), since SOQL has no CASE expressions', function () {
+        expect(fn () => Account::select(['Id'])->inOrderOf('Industry', ['Tech', 'Retail'])->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL cannot order by a list of values');
+    });
+
+    it('compiles havingBetween() to a pair of comparisons', function () {
+        expect(Account::select(['Industry'])->groupBy('Industry')->havingBetween('COUNT(Id)', [2, 10])->toSql())
+            ->toBe('select Industry from Account group by Industry having (COUNT(Id) >= 2 and COUNT(Id) <= 10)');
+        expect(Account::select(['Industry'])->groupBy('Industry')->havingNotBetween('COUNT(Id)', [2, 10])->toSql())
+            ->toBe('select Industry from Account group by Industry having (COUNT(Id) < 2 or COUNT(Id) > 10)');
+    });
+
+    it('throws a clear error for writes SOQL has no form of', function (Closure $call, string $message) {
+        Forrest::shouldReceive('sobjects')->never();
+        Forrest::shouldReceive('post')->never();
+
+        expect($call)->toThrow(InvalidArgumentException::class, $message);
+    })->with([
+        'insertOrIgnore'        => [fn () => Account::insertOrIgnore([['Name' => 'A']]), 'no insert-or-ignore'],
+        'fillAndInsertOrIgnore' => [fn () => Account::fillAndInsertOrIgnore([['Name' => 'A']]), 'no insert-or-ignore'],
+        'insertUsing'           => [fn () => Account::query()->insertUsing(['Name'], 'select Name from Lead'), 'cannot insert from a query'],
+        'updateOrInsert'        => [fn () => Account::query()->updateOrInsert(['Name' => 'A'], ['Rating' => 'Hot']), 'updateOrCreate()'],
+        'saveOrIgnore'          => [fn () => (new Account(['Name' => 'A']))->saveOrIgnore(), 'no insert-or-ignore'],
+    ]);
 });

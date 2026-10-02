@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Closure;
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use Exception;
 use Generator;
 use Illuminate\Database\Connection;
-use Illuminate\Database\QueryException;
-use Illuminate\Support\Str;
+use InvalidArgumentException;
 use stdClass;
 
 class SOQLConnection extends Connection
@@ -24,11 +25,16 @@ class SOQLConnection extends Connection
     protected bool $enableQueryLog;
 
     public function __construct(
-        private readonly SalesforceAdapter $adapter,
+        private readonly AdapterInterface $adapter,
         private readonly bool $queryAll = false,
     ) {
         // Cache config values for performance
         $this->enableQueryLog = config('eloquent-salesforce-objects.enable_query_log', false);
+    }
+
+    public function getAdapter(): AdapterInterface
+    {
+        return $this->adapter;
     }
 
     public function setGrammar(SOQLGrammar $grammar): void
@@ -47,7 +53,7 @@ class SOQLConnection extends Connection
     public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): array
     {
         return $this->run($query, $bindings, function (string $query, array $bindings): array {
-            $statement = $this->prepare($query, $bindings);
+            $statement = $this->substituteBindings($query, $bindings);
             return $this->executeQuery($statement);
         });
     }
@@ -61,35 +67,17 @@ class SOQLConnection extends Connection
     protected function executeQuery(string $statement): array
     {
         try {
-            // Execute query
-            $result = $this->queryAll
-                ? $this->adapter->queryAll($statement)
-                : $this->adapter->query($statement);
-
-            // Track query history
-            $this->adapter->queryHistory()->push($statement);
-
-            // Log the query if query logging is enabled
-            if ($this->enableQueryLog) {
-                $this->logSalesforceError('SOQL Query Executed', [
-                    'query' => $statement,
-                ], 'info');
-            }
+            $result = $this->fetch($statement);
 
             // Collect all records, handling pagination
             $records = $result['records'] ?? [];
 
-            // Handle aggregate queries that return empty records but have totalSize
-            // Salesforce returns simple COUNT() results in totalSize instead of records
-            // For other aggregates (SUM, AVG, MIN, MAX), empty records means null
-            if (empty($records) && isset($result['totalSize']) && $this->isAggregateQuery($statement)) {
-                // Only use totalSize for COUNT queries
-                if (stripos($statement, 'COUNT(') !== false) {
-                    $records = [
-                        ['aggregate' => $result['totalSize']],
-                    ];
-                }
-                // For other aggregates, leave records empty so aggregate() returns null
+            // COUNT() returns its result in totalSize with no records. Other aggregates
+            // (SUM, AVG, MIN, MAX) with no records mean null, so leave them empty.
+            if (empty($records) && isset($result['totalSize']) && $this->isCountQuery($statement)) {
+                $records = [
+                    ['aggregate' => $result['totalSize']],
+                ];
             }
 
             while (isset($result['nextRecordsUrl'])) {
@@ -113,6 +101,26 @@ class SOQLConnection extends Connection
     }
 
     /**
+     * Send a prepared statement to Salesforce and record it in the query history.
+     */
+    private function fetch(string $statement): array
+    {
+        $result = $this->queryAll
+            ? $this->adapter->queryAll($statement)
+            : $this->adapter->query($statement);
+
+        $this->adapter->queryHistory()->push($statement);
+
+        if ($this->enableQueryLog) {
+            $this->logSalesforceError('SOQL Query Executed', [
+                'query' => $statement,
+            ], 'info');
+        }
+
+        return $result;
+    }
+
+    /**
      * Run a select statement against the database and returns a generator.
      *
      * @param  string  $query
@@ -127,18 +135,17 @@ class SOQLConnection extends Connection
     {
 
         $statement = $this->run($query, $bindings, function (string $query, array $bindings): array {
-
             if ($this->pretending()) {
                 return [];
             }
 
-            $statement = $this->prepare($query, $bindings);
+            try {
+                return $this->fetch($this->substituteBindings($query, $bindings));
+            } catch (Exception $e) {
+                $this->handleSalesforceException($e, 'query');
 
-            if ($this->queryAll) {
-                return $this->adapter->queryAll($statement);
+                return [];
             }
-
-            return $this->adapter->query($statement);
         });
 
         // Yield all records from the initial result
@@ -172,8 +179,7 @@ class SOQLConnection extends Connection
 
             // Transform DateTimeInterface instances to SOQL date format
             if ($value instanceof DateTimeInterface) {
-                $grammar ??= $this->getQueryGrammar();
-                $bindings[$key] = $value->format($grammar->getDateFormat());
+                $bindings[$key] = $this->formatDatetime($value);
                 continue;
             }
 
@@ -184,14 +190,30 @@ class SOQLConnection extends Connection
                 continue;
             }
 
-            // Escape single quotes in string values to prevent SOQL injection
-            // SOQL uses backslash-escaped single quotes: O'Brien -> O\'Brien
+            // Escape string values to prevent SOQL injection. Backslashes must be
+            // escaped first, or a trailing "\" would swallow the closing quote.
             if (is_string($value)) {
-                $bindings[$key] = str_replace("'", "\\'", $value);
+                $bindings[$key] = self::escapeSoqlString($value);
             }
         }
 
         return $bindings;
+    }
+
+    /**
+     * Escape a string for use inside a quoted SOQL literal.
+     *
+     * O'Brien -> O\'Brien, C:\path -> C:\\path, newlines -> \n
+     */
+    public static function escapeSoqlString(string $value): string
+    {
+        return strtr($value, [
+            '\\' => '\\\\',
+            "'"  => "\\'",
+            "\n" => '\\n',
+            "\r" => '\\r',
+            "\t" => '\\t',
+        ]);
     }
 
     /**
@@ -208,16 +230,9 @@ class SOQLConnection extends Connection
 
         $start = microtime(true);
 
-        try {
-            $result = $this->runQueryCallback($query, $bindings, $callback);
-        } catch (QueryException $e) {
-            $result = $this->handleQueryException(
-                $e,
-                $query,
-                $bindings,
-                $callback
-            );
-        }
+        // Unlike Laravel's run(), don't wrap failures in QueryException: let the
+        // SalesforceException through, with its own message and status/error code.
+        $result = $callback($query, $bindings);
         // Once we have run the query, we will calculate the time that it took to run and
         // then log the query, bindings, and execution time, so we will report them on
         // the event that the developer needs them. We'll log time in milliseconds.
@@ -229,11 +244,74 @@ class SOQLConnection extends Connection
         return $result;
     }
 
-    private function prepare(string $query, array $bindings): string
+    /**
+     * Replace the ? placeholders in a compiled query with escaped binding values.
+     */
+    public function substituteBindings(string $query, array $bindings, bool $prepared = false): string
     {
-        $bindings = $this->prepareBindings($bindings);
+        $bindings = array_values($bindings);
+        $index = 0;
 
-        return Str::replaceArray('?', $bindings, $query);
+        // "?:date" / "?:datetime" are SOQLGrammar's typed placeholders for date fields
+        return (string) preg_replace_callback('/\?(?::(date|datetime)\b)?/', function (array $match) use (&$index, $bindings, $prepared): string {
+            if (! array_key_exists($index, $bindings)) {
+                return $match[0];
+            }
+
+            $value = $bindings[$index++];
+
+            if (isset($match[1])) {
+                return $this->formatTemporal($value, $match[1]);
+            }
+
+            // Already run through prepareBindings() (Laravel's toRawSql() does that first)
+            if ($prepared) {
+                return $value === null ? 'null' : (string) $value;
+            }
+
+            return $this->formatBinding($value);
+        }, $query);
+    }
+
+    private function formatBinding(mixed $value): string
+    {
+        // SOQL's null literal, e.g. whereIn('Name', ['a', null]) -> Name in ('a', null)
+        return $value === null ? 'null' : (string) $this->prepareBindings([$value])[0];
+    }
+
+    /**
+     * Format a value for a date or datetime field as an unquoted SOQL literal.
+     */
+    private function formatTemporal(mixed $value, string $type): string
+    {
+        if ($value instanceof DateTimeInterface) {
+            // A date field holds a calendar date, so keep the value's own day
+            return $type === 'date' ? $value->format('Y-m-d') : $this->formatDatetime($value);
+        }
+
+        $value = (string) $value;
+
+        if (preg_match(SOQLGrammar::DATE_PATTERN, $value) === 1) {
+            return $type === 'date' ? $value : "{$value}T00:00:00Z";
+        }
+
+        if (preg_match(SOQLGrammar::DATETIME_PATTERN, $value) === 1) {
+            // A datetime that prepareBindings() already formatted, going to a date field
+            return $type === 'datetime' ? $value : substr($value, 0, 10);
+        }
+
+        // The grammar only types values that match, so this is a programming error
+        throw new InvalidArgumentException("Not a valid SOQL {$type} value: {$value}");
+    }
+
+    /**
+     * SOQL datetimes are UTC: convert first, so a value in another timezone isn't shifted.
+     */
+    private function formatDatetime(DateTimeInterface $value): string
+    {
+        return DateTimeImmutable::createFromInterface($value)
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format($this->getQueryGrammar()->getDateFormat());
     }
 
     /**
@@ -261,15 +339,13 @@ class SOQLConnection extends Connection
     }
 
     /**
-     * Check if a query is an aggregate query
+     * Check if a query is a COUNT aggregate, as compiled by SOQLGrammar::compileAggregate().
+     *
+     * Only the start of the statement is checked, so values in the WHERE clause
+     * that happen to contain "COUNT(" are not mistaken for an aggregate.
      */
-    private function isAggregateQuery(string $query): bool
+    private function isCountQuery(string $query): bool
     {
-        $query = strtoupper($query);
-        return stripos($query, 'COUNT(') !== false ||
-               stripos($query, 'SUM(') !== false ||
-               stripos($query, 'AVG(') !== false ||
-               stripos($query, 'MIN(') !== false ||
-               stripos($query, 'MAX(') !== false;
+        return preg_match('/^\s*select\s+count\(/i', $query) === 1;
     }
 }

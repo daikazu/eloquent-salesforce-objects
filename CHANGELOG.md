@@ -2,6 +2,73 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## v2.0.0 - 2026-10-02
+
+This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](docs/upgrading.md) for what to change.
+
+### Added
+
+- **Eloquent methods that crashed on the missing PDO now work:**
+    - query `update($values)` (200 records per request; returns how many saved), `touch($column)` and `forceDelete()`
+    - `upsert($rows, 'External_Id__c')` by External Id, with the new `SalesforceAdapter::bulkUpsert()` (also on `AdapterInterface`)
+    - `insertGetId()` / `fillAndInsertGetId()`
+    - `$model->increment()` / `decrement()` / `incrementEach()` / `decrementEach()`, which compute the value and `save()` (not atomic)
+    - `toRawSql()` / `dumpRawSql()` / `ddRawSql()`
+- **Laravel 13 `#[Refreshes]`** fields are re-read after Salesforce saves.
+- **`SalesforceException::$statusCode` and `::$errorCode`** expose the HTTP status and Salesforce error code (e.g. `REQUEST_LIMIT_EXCEEDED`) of a failed call.
+- **`with()` loads `hasMany` / `hasOne` through SOQL child subqueries, in one API call.** `Account::with('contacts')` now sends `select ..., (select ... from Contacts) from Account` instead of a second query listing every parent Id. That list failed at around 600 parents against a real org because the request was too large.
+    - Relationship names come from describe metadata (new `AdapterInterface::childRelationshipName()`), so custom objects use their real `__r` name.
+    - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery, and `limit()` now applies per parent.
+    - Paged child results are followed, so every child is loaded. This also applies to raw `SalesforceAdapter::query()` results with subqueries.
+    - `belongsTo`, and closures using `offset()` or grouping, keep using a separate query.
+    - When the separate query is used (`belongsTo`, `load()`/`loadMissing()`, and fallbacks), the parent Ids are sent in groups of 200, one query per group, instead of one list that fails at around 600.
+    - New config key `eager_load_strategy` (`subquery` by default, or `query` for the old behaviour), with env var `SALESFORCE_EAGER_LOAD_STRATEGY`.
+
+### Security
+
+- **Backslashes in string bindings are now escaped.** Before, only `'` was escaped, so a value ending in `\` could escape its own closing quote and let the next string binding rewrite the WHERE clause. Newlines, carriage returns and tabs are escaped too. If you were pre-escaping values passed to `where()`, stop: they are escaped for you, and pre-escaped values are now stored literally.
+
+### Fixed
+
+- **`chunk()`, `each()` and `lazy()` work past 2,000 records.** They paged with `OFFSET`, which Salesforce caps at 2000, so they failed there (or quietly stopped with `throw_exceptions` off). Without their own order/offset/limit they now page by `Id`.
+- **`with()` subqueries honour `chaperone()`, `withDefault()` and `afterQuery()`.** Children now go through Laravel's `Relation::match()`, and the subquery always selects the foreign key.
+- **`havingBetween()`** compiles to a `>=`/`<=` pair.
+- **`paginate()` and `simplePaginate()` use `$defaultColumns`**, like `get()` and `cursor()`. Before, they selected every field unless you passed columns.
+- **`SalesforceAdapter::bulkUpdate()` accepts any number of records**, sending 200 per request and merging the results, like `insert()` and `delete()`. Before, it threw above 200. `allOrNone` applies per request.
+- **`whereTime()` / `orWhereTime()` throw `InvalidArgumentException`.** SOQL has no time-of-day comparison. Before, `whereTime()` behaved like `where()` and sent a quoted time Salesforce rejected.
+- **Date and datetime filters work.** The grammar decided which fields were dates using Laravel's `getDates()`, which is always empty because `SalesforceModel` turns timestamps off. Values are now formatted by the field's type from describe metadata (looked up only for values that can be dates):
+    - `date` fields (`CloseDate`): strings and Carbon both go out as `2025-01-01`. Before, strings were quoted and Carbon values were sent as datetimes, and Salesforce rejected both.
+    - `datetime` fields (`CreatedDate`): Carbon is converted to UTC first (before, a non-UTC Carbon was off by its offset), and a date-only string means midnight UTC.
+    - `whereDate()` on a datetime field compiles to `DAY_ONLY(Field)`. Before, Salesforce rejected it. It also no longer puts arbitrary strings into the query unquoted; only strict `YYYY-MM-DD` values.
+    - `whereYear()` / `whereMonth()` / `whereDay()` compile to `CALENDAR_YEAR()` / `CALENDAR_MONTH()` / `DAY_IN_MONTH()` instead of SQL's `year()` etc.
+- **Builder methods that produced SQL-only syntax now produce valid SOQL, or throw a clear error:**
+    - `whereIn()`/`whereNotIn()` with `null` in the list sent a raw `?`; they now send `null`.
+    - An empty `whereNotIn()` (and an empty `whereIntegerInRaw()`/`whereIntegerNotInRaw()`) sent `1 = 1` / `0 = 1`; they now send `Id != null` / `Id = null`.
+    - `whereBetween()` / `whereNotBetween()` sent `BETWEEN`, which SOQL doesn't have; they now compile to `(X >= min and X <= max)` / `(X < min or X > max)`.
+    - `distinct()->count('Field')` sent `COUNT(distinct Field)`; it now sends `COUNT_DISTINCT(Field)`.
+    - `distinct()`, `inRandomOrder()`, `whereBetweenColumns()` and `whereValueBetween()` now throw `InvalidArgumentException`, with what to use instead.
+- **Error messages say what went wrong.** A Salesforce error with a non-JSON body (an HTML error page, or none) used to read `Query failed: null`. It now gives the HTTP status and body, e.g. `Query failed: HTTP 414 Request-URI Too Large (the request is too long: ...)`. Salesforce's JSON errors read `ERROR_CODE: message (HTTP 400)` instead of a pretty-printed JSON dump.
+- **`simplePaginate()` no longer skips a record on every page.** The offset was calculated from `perPage + 1`, so page 2 at 20 per page started at row 21.
+- **A query with no results is no longer mistaken for a COUNT** when a value in its WHERE clause contains `COUNT(`. Before, it returned one phantom model.
+- **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
+- **One adapter everywhere.** `AdapterInterface` is now a singleton that resolves to the same `SalesforceAdapter` instance. Queries, saves, relationship subqueries and `SalesforceBatch` all use it, so binding your own `AdapterInterface` replaces it for all of them. Before, reads always used the concrete `SalesforceAdapter`.
+- **Compiling a `where` on a `SOQLGrammar` without a model no longer throws** an uninitialized-property error.
+- **`limit()` inside a `with()` closure no longer sends invalid SOQL.** Laravel compiled it into a `row_number()` window function. It now works through the subquery, and on the separate-query path it throws a clear `InvalidArgumentException`.
+- **`exists()` no longer runs eager loads.**
+- **`cursor()` now selects the same columns as `get()`.** On a model with `$defaultColumns` it adds `CreatedDate`, `LastModifiedDate` and `IsDeleted` like `get()` does. On a model without them, or after `allColumns()`, it expands to every field instead of sending `select *`, which Salesforce rejects.
+- **`cursor()` records its query in `queryHistory()`** and, with `throw_exceptions` off, logs a failed query and yields nothing instead of throwing.
+- **Failed bulk `insert()` / `delete()` chunks are logged** when `throw_exceptions` is off. Before, they were skipped without any log entry.
+- **Bulk `delete()` selects only `Id`** to find the records to delete, instead of fetching every column.
+- **Passing a model class to the adapter respects an overridden `getTable()`.** Before, it read only the `$table` property through reflection.
+
+### Changed
+
+- **These now throw `InvalidArgumentException` with what to use instead:** `lockForUpdate()` / `sharedLock()` (the API rejects `FOR UPDATE`; `FOR VIEW` / `FOR REFERENCE` still work), `inOrderOf()`, query-level `increment()` / `decrement()`, `insertOrIgnore()`, `insertUsing()`, `updateOrInsert()` and `saveOrIgnore()`.
+- **Eloquent queries throw `SalesforceException` instead of Laravel's `QueryException`.** Before, a failed `get()`/`first()`/`cursor()` was wrapped in `QueryException`, so `catch (SalesforceException)`, as the docs recommend, didn't catch it. Code that catches `QueryException` around Salesforce queries needs updating.
+- **`MalformedQueryException` now extends `SalesforceException` and is thrown for `MALFORMED_QUERY` errors.** Before, it existed but was never thrown.
+- **`join()` and all its variants (`leftJoin`, `crossJoin`, `joinSub`, `joinWhere`, ...) now throw `InvalidArgumentException`**, as the docs already said. Before, they quietly compiled into a child subquery named by pluralizing the object (`Foo__c` became `Foo__cs`), which Salesforce rejects for custom objects, and the rows came back nested rather than joined. Use `with()` for child records, `select('Account.Name')` for parent fields, or a `whereIn` semi-join to filter.
+- `AdapterInterface` gains `bulkUpsert()`, `childRelationshipName()`, `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has all four.
+
 ## v1.1.0 - 2026-05-22
 
 ### Added

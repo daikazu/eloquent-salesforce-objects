@@ -5,14 +5,25 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use DateTimeInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\Grammar;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Throwable;
 
 class SOQLGrammar extends Grammar
 {
-    protected SalesforceModel $model;
+    protected ?SalesforceModel $model = null;
+
+    /** A SOQL date literal: 2025-01-31 */
+    public const string DATE_PATTERN = '/^\d{4}-\d{2}-\d{2}$/';
+
+    /** A SOQL datetime literal: 2025-01-31T10:00:00Z, 2025-01-31T10:00:00.000+0000 */
+    public const string DATETIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:?\d{2})$/';
+
+    /** @var array<string, array<string, string>> */
+    private array $fieldTypes = [];
 
     /**
      * The components that make up a select clause.
@@ -34,7 +45,7 @@ class SOQLGrammar extends Grammar
         'for',
     ];
 
-    public function getModel(): SalesforceModel
+    public function getModel(): ?SalesforceModel
     {
         return $this->model;
     }
@@ -55,11 +66,6 @@ class SOQLGrammar extends Grammar
         return $value;
     }
 
-    protected function unWrapValue($value): array | string
-    {
-        return str_replace('`', '', $value);
-    }
-
     /**
      * {@inheritdoc}
      *
@@ -67,10 +73,6 @@ class SOQLGrammar extends Grammar
      */
     protected function whereBasic(Builder $query, $where): string
     {
-        if ($this->isDate($where['column'])) {
-            return $this->whereDate($query, $where);
-        }
-
         // allow for "false" values to not be wrapped.
         if (is_bool($where['value'])) {
             return $this->whereBoolean($where);
@@ -90,22 +92,133 @@ class SOQLGrammar extends Grammar
             );
         }
 
-        return parent::whereBasic($query, $where);
+        $operator = str_replace('?', '??', (string) $where['operator']);
+
+        return $this->wrap($where['column']) . ' ' . $operator . ' ' . $this->typedParameter($query, $where['column'], $where['value']);
     }
 
+    /**
+     * A placeholder for a value compared with a column. Date and datetime fields get a typed
+     * placeholder ("?:date" / "?:datetime"), which SOQLConnection::substituteBindings() fills
+     * with an unquoted literal in that field's format. Anything else is a normal parameter.
+     */
+    protected function typedParameter(Builder $query, mixed $column, mixed $value): string
+    {
+        $type = $this->temporalTypeFor($query, $column, $value);
+
+        return $type === null ? $this->parameter($value) : "?:{$type}";
+    }
+
+    /**
+     * "date" or "datetime" when $value is a date for that kind of field, otherwise null.
+     *
+     * Only values that can be dates trigger a describe lookup, and strings must match a
+     * date/datetime format exactly, because they're sent unquoted.
+     */
+    private function temporalTypeFor(Builder $query, mixed $column, mixed $value): ?string
+    {
+        $isDateString = is_string($value) && preg_match(self::DATE_PATTERN, $value) === 1;
+        $isDatetimeString = is_string($value) && preg_match(self::DATETIME_PATTERN, $value) === 1;
+
+        if (! ($value instanceof DateTimeInterface || $isDateString || $isDatetimeString)
+            || ! is_string($column) || str_contains($column, '.') || ! is_string($query->from)) {
+            return null;
+        }
+
+        return match ($this->fieldTypes($query->from)[$column] ?? null) {
+            'date'     => $value instanceof DateTimeInterface || $isDateString ? 'date' : null,
+            'datetime' => 'datetime',
+            default    => null,
+        };
+    }
+
+    /**
+     * Field name => describe type for an object, looked up once per grammar (one per builder).
+     * A failed describe means no types, so values fall back to normal parameters.
+     *
+     * @return array<string, string>
+     */
+    private function fieldTypes(string $object): array
+    {
+        if (! array_key_exists($object, $this->fieldTypes)) {
+            $types = [];
+
+            try {
+                if ($this->connection instanceof SOQLConnection) {
+                    foreach ($this->connection->getAdapter()->describe($object)['fields'] ?? [] as $field) {
+                        if (isset($field['name'], $field['type'])) {
+                            $types[$field['name']] = $field['type'];
+                        }
+                    }
+                }
+            } catch (Throwable) {
+                $types = [];
+            }
+
+            $this->fieldTypes[$object] = $types;
+        }
+
+        return $this->fieldTypes[$object];
+    }
+
+    /**
+     * Compare the date part of a field. A datetime field needs DAY_ONLY() (the day in UTC);
+     * a date field compares directly. Only a strict YYYY-MM-DD value goes in unquoted.
+     */
     protected function whereDate(Builder $query, $where): string
     {
-        return $this->wrap($where['column']) . $where['operator'] . '?';
+        $column = $this->wrap($where['column']);
+
+        if (is_string($where['column']) && is_string($query->from)
+            && ($this->fieldTypes($query->from)[$where['column']] ?? null) === 'datetime') {
+            $column = "DAY_ONLY({$column})";
+        }
+
+        $value = is_string($where['value']) && preg_match(self::DATE_PATTERN, $where['value']) === 1
+            ? '?:date'
+            : $this->parameter($where['value']);
+
+        return "{$column} {$where['operator']} {$value}";
+    }
+
+    protected function whereTime(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(
+            'SOQL has no time-of-day comparison. Compare the full datetime instead, '
+            . 'e.g. ->where(\'CreatedDate\', \'>=\', now()->setTime(10, 0)), or filter the results in PHP.'
+        );
+    }
+
+    protected function whereYear(Builder $query, $where): string
+    {
+        return $this->datePartWhere('CALENDAR_YEAR', $where);
+    }
+
+    protected function whereMonth(Builder $query, $where): string
+    {
+        return $this->datePartWhere('CALENDAR_MONTH', $where);
+    }
+
+    protected function whereDay(Builder $query, $where): string
+    {
+        return $this->datePartWhere('DAY_IN_MONTH', $where);
+    }
+
+    /**
+     * SOQL date functions take an unquoted number; anything else is quoted (and rejected by Salesforce).
+     */
+    private function datePartWhere(string $function, array $where): string
+    {
+        $value = is_int($where['value']) || (is_string($where['value']) && ctype_digit($where['value']))
+            ? '?'
+            : $this->parameter($where['value']);
+
+        return "{$function}({$this->wrap($where['column'])}) {$where['operator']} {$value}";
     }
 
     protected function compileLimit(Builder $query, $limit): string
     {
         return 'limit ' . (int) $limit;
-    }
-
-    protected function isDate($column): bool
-    {
-        return in_array($column, $this->model->getDates());
     }
 
     public function parameter($value, $column = null): string
@@ -123,54 +236,124 @@ class SOQLGrammar extends Grammar
         return $this->isExpression($value) ? $this->getValue($value) : '?';
     }
 
+    /**
+     * An empty IN list matches nothing. Every record has an Id, so "Id = null" is always false.
+     */
     protected function whereIn(Builder $query, $where): string
     {
         if (! empty($where['values'])) {
-            return $this->wrap($where['column']) . ' in (' . $this->parameterize($where['values']) . ')';
+            return $this->wrap($where['column']) . ' in (' . $this->typedParameters($query, $where) . ')';
         }
 
         return 'Id = null';
     }
 
     /**
-     * Compile the "join" portions of the query.
-     *
-     * In SOQL, joins are relationship queries (subqueries), not traditional SQL joins.
-     * Example: SELECT Name, (SELECT LastName FROM Contacts) FROM Account
+     * An empty NOT IN list matches everything; "Id != null" is always true. (SQL's "1 = 1" isn't valid SOQL.)
+     */
+    protected function whereNotIn(Builder $query, $where): string
+    {
+        if (! empty($where['values'])) {
+            return $this->wrap($where['column']) . ' not in (' . $this->typedParameters($query, $where) . ')';
+        }
+
+        return 'Id != null';
+    }
+
+    private function typedParameters(Builder $query, array $where): string
+    {
+        return implode(', ', array_map(
+            fn (mixed $value): string => $this->typedParameter($query, $where['column'], $value),
+            array_values($where['values'])
+        ));
+    }
+
+    protected function whereInRaw(Builder $query, $where): string
+    {
+        return empty($where['values']) ? 'Id = null' : parent::whereInRaw($query, $where);
+    }
+
+    protected function whereNotInRaw(Builder $query, $where): string
+    {
+        return empty($where['values']) ? 'Id != null' : parent::whereNotInRaw($query, $where);
+    }
+
+    /**
+     * SOQL has no BETWEEN, so compile to a pair of comparisons.
+     */
+    protected function whereBetween(Builder $query, $where): string
+    {
+        $values = array_values(is_array($where['values']) ? $where['values'] : iterator_to_array($where['values']));
+        $column = $this->wrap($where['column']);
+
+        $min = $this->typedParameter($query, $where['column'], $values[0]);
+        $max = $this->typedParameter($query, $where['column'], $values[count($values) - 1]);
+
+        return $where['not']
+            ? "({$column} < {$min} or {$column} > {$max})"
+            : "({$column} >= {$min} and {$column} <= {$max})";
+    }
+
+    protected function whereBetweenColumns(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(self::COLUMN_COMPARISON_UNSUPPORTED);
+    }
+
+    protected function whereValueBetween(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(self::COLUMN_COMPARISON_UNSUPPORTED);
+    }
+
+    public function compileRandom($seed): string
+    {
+        throw new InvalidArgumentException('SOQL has no random ordering. Shuffle the results in PHP instead: ->get()->shuffle().');
+    }
+
+    protected function compileColumns(Builder $query, $columns): ?string
+    {
+        if ($query->aggregate === null && $query->distinct) {
+            throw new InvalidArgumentException(
+                'SOQL has no DISTINCT. Use groupBy() on the field instead, or ->distinct()->count(\'Field\') for COUNT_DISTINCT().'
+            );
+        }
+
+        return parent::compileColumns($query, $columns);
+    }
+
+    /**
+     * SOQL has no joins. It can only follow relationships Salesforce defines, and
+     * child records come back nested rather than as flat joined rows.
+     */
+    public const string JOINS_UNSUPPORTED = 'SOQL does not support joins. '
+        . 'Load child records with ->with(\'contacts\'), select parent fields with dot notation (->select(\'Account.Name\')), '
+        . 'or filter by related records with a semi-join: ->whereIn(\'Id\', fn ($q) => $q->select(\'AccountId\')->from(\'Contact\')->where(...)).';
+
+    public const string COLUMN_COMPARISON_UNSUPPORTED = 'SOQL does not support column-to-column comparisons '
+        . '(whereColumn, whereBetweenColumns, has, whereHas, doesntHave, withCount). '
+        . 'Use a semi-join instead: ->whereIn(\'Id\', fn ($q) => $q->select(\'Lookup__c\')->from(\'Child__c\')->where(...)).';
+
+    /**
+     * Reject joins that reach the grammar without going through SOQLBuilder.
      *
      * @param  array  $joins
      */
     protected function compileJoins(Builder $query, $joins): string
     {
-        return collect($joins)
-            ->map(function ($join): string {
-                $adapter = app(SalesforceAdapter::class);
+        throw new InvalidArgumentException(self::JOINS_UNSUPPORTED);
+    }
 
-                $table = $join->table;
-
-                // Resolve field columns
-                $columns = $adapter->resolveFields($table, $join->columns ?: ['*']);
-                $columnsList = collect($columns)->implode(', ');
-
-                // Get pluralized relationship name for SOQL
-                $relationshipName = $this->unWrapValue($this->grammarPlural($table));
-
-                // Build subquery
-                $subquery = "SELECT {$columnsList} FROM {$relationshipName}";
-
-                // Add WHERE clauses if present
-                // Note: We skip the first where clause (index 0) as it typically represents
-                // the join condition which is implicit in SOQL relationship queries
-                $wheres = collect($join->wheres)->skip(1)->all();
-
-                if (! empty($wheres)) {
-                    $join->wheres = $wheres;
-                    $subquery .= ' ' . $this->compileWheres($join);
-                }
-
-                return ", ({$subquery})";
-            })
-            ->implode(' ');
+    /**
+     * limit() inside with() asks for a per-parent limit. SOQL can only do that in a
+     * child subquery, so reject it when the relationship falls back to a plain query.
+     */
+    protected function compileGroupLimit(Builder $query): string
+    {
+        throw new InvalidArgumentException(
+            'limit() on an eager-loaded relationship only works when it loads through a SOQL child subquery, '
+            . 'and this one could not: eager_load_strategy is "query", the relationship is not in Salesforce\'s '
+            . 'child relationships for the parent, or the closure uses offset(), grouping or distinct. '
+            . 'Remove limit() and trim the loaded collection instead.'
+        );
     }
 
     protected function concatenateWhereClauses($query, $sql): string
@@ -194,17 +377,19 @@ class SOQLGrammar extends Grammar
             }
         }
 
-        // If the query has a "distinct" constraint, and we're not asking for all columns,
-        // we need to prepend "distinct" onto the column name so that the query takes
-        // it into account when it performs the aggregating operations on the data.
-        if ($query->distinct && $column !== '' && $column !== '*') {
-            $column = 'distinct ' . $column;
+        $function = strtoupper($aggregate['function']);
+
+        // SOQL spells a distinct count COUNT_DISTINCT(field); other aggregates have no distinct form
+        if ($query->distinct && $column !== '') {
+            if ($function !== 'COUNT') {
+                throw new InvalidArgumentException("SOQL has no distinct form of {$function}().");
+            }
+
+            $function = 'COUNT_DISTINCT';
         }
 
-        // Build the function call
-        // SOQL automatically assigns aliases like expr0, expr1, etc. to aggregate results
-        // We don't specify the alias in the query - Salesforce adds it automatically
-        $function = strtoupper($aggregate['function']) . '(' . $column . ')';
+        // SOQL assigns aliases (expr0, expr1, ...) to aggregate results itself
+        $function .= '(' . $column . ')';
 
         return 'select ' . $function;
     }
@@ -283,22 +468,99 @@ class SOQLGrammar extends Grammar
         ]);
     }
 
+    /**
+     * Used by Laravel's toRawSql()/dumpRawSql(), which pass bindings already run through
+     * prepareBindings(). The base version escapes again through PDO, which SOQLConnection
+     * doesn't have; substitute them as they are.
+     *
+     * @param  string  $sql
+     * @param  array  $bindings
+     */
+    public function substituteBindingsIntoRawSql($sql, $bindings): string
+    {
+        return $this->connection instanceof SOQLConnection
+            ? $this->connection->substituteBindings($sql, $bindings, prepared: true)
+            : parent::substituteBindingsIntoRawSql($sql, $bindings);
+    }
+
+    /**
+     * The API has no row locking: "FOR UPDATE" is Apex-only and rejected as MALFORMED_QUERY.
+     * SOQL's FOR VIEW / FOR REFERENCE (which update recently-viewed data) pass through.
+     */
     protected function compileLock(Builder $query, $value): string
     {
-        return 'FOR UPDATE';
+        if (is_string($value) && in_array(strtoupper(trim($value)), ['FOR VIEW', 'FOR REFERENCE'], true)) {
+            return strtoupper(trim($value));
+        }
+
+        if (is_bool($value)) {
+            throw new InvalidArgumentException(
+                'Row locking (FOR UPDATE) is only available in Apex; the Salesforce API rejects it. '
+                . 'Remove lockForUpdate()/sharedLock() (and refreshForUpdate()).'
+            );
+        }
+
+        throw new InvalidArgumentException('SOQL only supports the lock clauses FOR VIEW or FOR REFERENCE.');
+    }
+
+    /**
+     * Reject inOrderOf(), which compiles to a CASE expression SOQL doesn't have.
+     */
+    protected function compileOrdersToArray(Builder $query, $orders): array
+    {
+        foreach ($orders as $order) {
+            if (($order['type'] ?? null) === 'InOrderOf') {
+                throw new InvalidArgumentException(
+                    'SOQL cannot order by a list of values (inOrderOf()). Sort the results in PHP instead: ->get()->sortBy(...).'
+                );
+            }
+        }
+
+        return parent::compileOrdersToArray($query, $orders);
+    }
+
+    /**
+     * SOQL has no BETWEEN, so compile havingBetween() to a pair of comparisons.
+     *
+     * @param  array  $having
+     */
+    protected function compileHavingBetween($having): string
+    {
+        $values = array_values(is_array($having['values']) ? $having['values'] : iterator_to_array($having['values']));
+        $column = $this->wrap($having['column']);
+        $min = $this->parameter($values[0]);
+        $max = $this->parameter($values[count($values) - 1]);
+
+        return $having['not']
+            ? "({$column} < {$min} or {$column} > {$max})"
+            : "({$column} >= {$min} and {$column} <= {$max})";
+    }
+
+    public const string INSERT_OR_IGNORE_UNSUPPORTED = 'Salesforce has no insert-or-ignore. '
+        . 'Use upsert() with an External Id field, or insert()/save() and handle DUPLICATE_VALUE errors.';
+
+    public function compileInsertOrIgnore(Builder $query, array $values): string
+    {
+        throw new InvalidArgumentException(self::INSERT_OR_IGNORE_UNSUPPORTED);
+    }
+
+    public function compileInsertOrIgnoreReturning(Builder $query, array $values, array $returning, ?array $uniqueBy): string
+    {
+        throw new InvalidArgumentException(self::INSERT_OR_IGNORE_UNSUPPORTED);
+    }
+
+    public function compileInsertUsing(Builder $query, array $columns, string $sql): string
+    {
+        throw new InvalidArgumentException('SOQL cannot insert from a query. Query the records, then insert() them.');
+    }
+
+    public function compileUpsert(Builder $query, array $values, array $uniqueBy, array $update): string
+    {
+        throw new InvalidArgumentException('Use upsert() on a Salesforce model query, which upserts by External Id.');
     }
 
     public function getDateFormat(): string
     {
         return 'Y-m-d\TH:i:s\Z';
-    }
-
-    private function grammarPlural(string $table): string
-    {
-        if (Str::endsWith($table, 'try')) {
-            return Str::replaceLast('try', 'tries', $table);
-        }
-
-        return Str::plural($table);
     }
 }

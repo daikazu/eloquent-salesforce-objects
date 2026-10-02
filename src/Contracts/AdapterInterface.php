@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Contracts;
 
+use Illuminate\Support\Collection;
+
 interface AdapterInterface
 {
     /**
@@ -78,6 +80,30 @@ interface AdapterInterface
     public function picklistValues(string | object $object, string $field): array;
 
     /**
+     * Resolve the columns to select, expanding ['*'] to every field on the object
+     *
+     * @param  string|object  $object  Salesforce object name or model
+     * @param  array<int, string>  $columns
+     * @return array<int, string>
+     */
+    public function resolveFields(string | object $object, array $columns = ['*']): array;
+
+    /**
+     * Get the child relationship name used in parent-to-child subqueries (e.g. "Contacts")
+     *
+     * @param  string|object  $parent  Parent object name or model
+     * @return string|null Null when the relationship doesn't exist or can't be queried
+     */
+    public function childRelationshipName(string | object $parent, string $childObject, string $field): ?string;
+
+    /**
+     * The SOQL statements executed through this adapter
+     *
+     * @return Collection<int, string>
+     */
+    public function queryHistory(): Collection;
+
+    /**
      * Bulk create multiple records (up to 200 per request)
      *
      * @param  string  $object  Salesforce object name
@@ -96,6 +122,17 @@ interface AdapterInterface
      * @return array Results with success/error info for each record
      */
     public function bulkUpdate(string $object, array $records, bool $allOrNone = false): array;
+
+    /**
+     * Bulk upsert records by an External Id field (sent 200 per request)
+     *
+     * @param  string  $object  Salesforce object name
+     * @param  string  $externalIdField  An External Id field on the object (or "Id")
+     * @param  array  $records  Array of record data arrays, each including $externalIdField
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
+     * @return array Results with id/success/created/errors for each record
+     */
+    public function bulkUpsert(string $object, string $externalIdField, array $records, bool $allOrNone = false): array;
 
     /**
      * Bulk delete multiple records (up to 200 per request)

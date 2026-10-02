@@ -50,6 +50,8 @@ class EloquentSalesforceObjectsServiceProvider extends PackageServiceProvider
             $app->make(AuthenticationManager::class)
         ));
 
-        $this->app->bind(AdapterInterface::class, SalesforceAdapter::class);
+        // Resolve the interface to the same singleton so reads, writes and batches
+        // share one adapter, and rebinding the interface swaps it everywhere.
+        $this->app->singleton(AdapterInterface::class, fn ($app): AdapterInterface => $app->make(SalesforceAdapter::class));
     }
 }

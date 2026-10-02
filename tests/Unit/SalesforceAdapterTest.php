@@ -498,3 +498,106 @@ describe('describe', function () {
         expect($contactResult['name'])->toBe('Contact');
     });
 });
+
+// ---------------------------------------------------------------------------
+// childRelationshipName
+// ---------------------------------------------------------------------------
+
+describe('childRelationshipName', function () {
+    beforeEach(function () {
+        Cache::flush();
+
+        Forrest::shouldReceive('describe')->with('Account')->andReturn([
+            'fields'             => [],
+            'childRelationships' => [
+                ['childSObject' => 'Contact', 'field' => 'AccountId', 'relationshipName' => 'Contacts'],
+                ['childSObject' => 'Contact', 'field' => 'Billing_Account__c', 'relationshipName' => 'Billed_Contacts__r'],
+                ['childSObject' => 'AccountHistory', 'field' => 'AccountId', 'relationshipName' => null],
+            ],
+        ]);
+    });
+
+    it('returns the relationship name for a child object and lookup field', function () {
+        expect($this->adapter->childRelationshipName('Account', 'Contact', 'AccountId'))->toBe('Contacts');
+    });
+
+    it('distinguishes several relationships to the same child object by field', function () {
+        expect($this->adapter->childRelationshipName('Account', 'Contact', 'Billing_Account__c'))->toBe('Billed_Contacts__r');
+    });
+
+    it('accepts a model class for the parent', function () {
+        expect($this->adapter->childRelationshipName(Account::class, 'Contact', 'AccountId'))->toBe('Contacts');
+    });
+
+    it('returns null when the relationship is not queryable or does not exist', function () {
+        expect($this->adapter->childRelationshipName('Account', 'AccountHistory', 'AccountId'))->toBeNull();
+        expect($this->adapter->childRelationshipName('Account', 'Case', 'AccountId'))->toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Paginated child relationship results
+// ---------------------------------------------------------------------------
+
+describe('nested relationship pagination', function () {
+    it('follows a nested nextRecordsUrl so each parent gets all its children', function () {
+        Forrest::shouldReceive('query')->once()->andReturn([
+            'totalSize' => 2,
+            'done'      => true,
+            'records'   => [
+                [
+                    'attributes' => ['type' => 'Account'],
+                    'Id'         => '001A',
+                    'Contacts'   => [
+                        'totalSize'      => 3,
+                        'done'           => false,
+                        'nextRecordsUrl' => '/services/data/v64.0/query/01gA-2',
+                        'records'        => [['attributes' => ['type' => 'Contact'], 'Id' => '003A']],
+                    ],
+                ],
+                [
+                    'attributes' => ['type' => 'Account'],
+                    'Id'         => '001B',
+                    'Contacts'   => ['totalSize' => 1, 'done' => true, 'records' => [['Id' => '003Z']]],
+                ],
+            ],
+        ]);
+
+        Forrest::shouldReceive('next')->once()->with('/services/data/v64.0/query/01gA-2')->andReturn([
+            'totalSize'      => 3,
+            'done'           => false,
+            'nextRecordsUrl' => '/services/data/v64.0/query/01gA-3',
+            'records'        => [['attributes' => ['type' => 'Contact'], 'Id' => '003B']],
+        ]);
+
+        Forrest::shouldReceive('next')->once()->with('/services/data/v64.0/query/01gA-3')->andReturn([
+            'totalSize' => 3,
+            'done'      => true,
+            'records'   => [['Id' => '003C']],
+        ]);
+
+        $result = $this->adapter->query('select Id, (select Id from Contacts) from Account');
+
+        expect($result['records'][0]['Contacts'])->toBe([['Id' => '003A'], ['Id' => '003B'], ['Id' => '003C']]);
+        expect($result['records'][1]['Contacts'])->toBe([['Id' => '003Z']]);
+    });
+
+    it('also follows nested pages in queryAll() and next() results', function () {
+        $page = fn (string $id) => [
+            'totalSize' => 1,
+            'done'      => true,
+            'records'   => [[
+                'Id'       => $id,
+                'Contacts' => ['done' => false, 'nextRecordsUrl' => "/more-{$id}", 'records' => [['Id' => "{$id}-1"]]],
+            ]],
+        ];
+
+        Forrest::shouldReceive('queryAll')->once()->andReturn($page('001A'));
+        Forrest::shouldReceive('next')->with('/outer')->once()->andReturn($page('001B'));
+        Forrest::shouldReceive('next')->with('/more-001A')->once()->andReturn(['done' => true, 'records' => [['Id' => '001A-2']]]);
+        Forrest::shouldReceive('next')->with('/more-001B')->once()->andReturn(['done' => true, 'records' => [['Id' => '001B-2']]]);
+
+        expect($this->adapter->queryAll('...')['records'][0]['Contacts'])->toHaveCount(2);
+        expect($this->adapter->next('/outer')['records'][0]['Contacts'])->toHaveCount(2);
+    });
+});

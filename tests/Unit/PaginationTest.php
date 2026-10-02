@@ -399,10 +399,11 @@ describe('simplePaginate method', function () {
             ],
         ]);
 
-        // Mock data query with offset for page 2
+        // Page 2 at 20 per page starts at offset 20 and fetches one extra row
         Forrest::shouldReceive('query')
             ->once()
-            ->with(Mockery::any())
+            ->with(Mockery::on(fn ($query) => str_contains($query, 'limit 21')
+                && str_contains($query, 'offset 20')))
             ->andReturn([
                 'totalSize' => 21,
                 'done'      => true,
@@ -570,5 +571,93 @@ describe('pagination edge cases', function () {
 
         expect($paginator->total())->toBe(30);
         expect($paginator->count())->toBe(10);
+    });
+});
+
+describe('default page size', function () {
+    it('uses the default_page_size config when no per-page value is given', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $paginator = Account::query()->paginate(null, ['Id'], 'page', 1, 0);
+
+        expect($paginator->perPage())->toBe(50);
+    });
+
+    it('defaults to 200 per page out of the box', function () {
+        expect((new Account)->getPerPage())->toBe(200);
+    });
+
+    it('lets a model override the page size with $perPage', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $model = new class extends Account
+        {
+            protected $perPage = 10;
+        };
+
+        expect($model->getPerPage())->toBe(10);
+    });
+
+    it('respects setPerPage() at runtime', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        expect((new Account)->setPerPage(30)->getPerPage())->toBe(30);
+    });
+
+    it('prefers an explicit per-page argument', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 50]);
+
+        $paginator = Account::query()->paginate(25, ['Id'], 'page', 1, 0);
+
+        expect($paginator->perPage())->toBe(25);
+    });
+
+    it('applies the config to simplePaginate', function () {
+        config(['eloquent-salesforce-objects.default_page_size' => 40]);
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(fn ($soql) => str_contains($soql, 'limit 41')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        expect(Account::query()->simplePaginate(null, ['Id'])->perPage())->toBe(40);
+    });
+});
+
+describe('pagination with $defaultColumns', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(['fields' => array_map(
+            fn ($name) => ['name' => $name],
+            ['Id', 'Name', 'Type', 'Description', 'CreatedDate', 'LastModifiedDate', 'IsDeleted'],
+        )]);
+    });
+
+    it('paginate() selects the model\'s default columns, like get()', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, Type, Industry, ')
+                && str_contains($q, ', OwnerId, CreatedDate, LastModifiedDate, IsDeleted from Account')
+                && ! str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::paginate(10, ['*'], 'page', 1, 5);
+    });
+
+    it('simplePaginate() selects the model\'s default columns, like get()', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, Type, Industry, ')
+                && ! str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::simplePaginate(10);
+    });
+
+    it('allColumns()->paginate() selects every field', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::allColumns()->paginate(10, ['*'], 'page', 1, 5);
     });
 });

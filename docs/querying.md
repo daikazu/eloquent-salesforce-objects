@@ -100,30 +100,61 @@ $contacts = Contact::whereNotNull('Email')->get();
 ### Where Between
 
 ```php
-// WHERE field BETWEEN min AND max
+// SOQL has no BETWEEN, so this compiles to (Amount >= 10000 and Amount <= 50000)
 $opportunities = Opportunity::whereBetween('Amount', [10000, 50000])->get();
 
-// Dates
+// whereNotBetween compiles to (Amount < 10000 or Amount > 50000)
+$outliers = Opportunity::whereNotBetween('Amount', [10000, 50000])->get();
+
+// Dates work on date and datetime fields (see Date Queries below)
 $accounts = Account::whereBetween('CreatedDate', [
-    '2024-01-01',
-    '2024-12-31'
+    now()->startOfYear(),
+    now()->endOfYear(),
 ])->get();
 ```
 
+`whereIn()` and `whereNotIn()` accept `null` in the list (`Name in ('a', null)`). An empty `whereIn()` list matches nothing, and an empty `whereNotIn()` list matches everything.
+
 ### Date Queries
 
-```php
-// WHERE CreatedDate >= DATE
-$accounts = Account::whereDate('CreatedDate', '>=', '2024-01-01')->get();
+SOQL takes date values unquoted, in a different format for `date` fields (`CloseDate`) and `datetime` fields (`CreatedDate`). The package looks up each field's type in Salesforce's metadata and formats the value to match, so `where()`, `whereBetween()` and `whereIn()` accept Carbon instances or date strings on either kind of field:
 
-// WHERE CreatedDate = SPECIFIC DATE
+```php
+// Date field: sent as CloseDate >= 2025-01-01
+Opportunity::where('CloseDate', '>=', '2025-01-01')->get();
+Opportunity::whereBetween('CloseDate', [now()->startOfQuarter(), now()->endOfQuarter()])->get();
+
+// Datetime field: Carbon is converted to UTC (CreatedDate >= 2025-01-01T05:00:00Z
+// for midnight in New York); a date-only string means midnight UTC
+Account::where('CreatedDate', '>=', now()->subDays(30))->get();
+Account::where('CreatedDate', '>=', '2025-01-01')->get();
+```
+
+`whereDate()` compares the date part only. On a datetime field it uses SOQL's `DAY_ONLY()`, which takes the day in UTC:
+
+```php
+// WHERE DAY_ONLY(CreatedDate) = 2024-01-15
 $accounts = Account::whereDate('CreatedDate', '2024-01-15')->get();
 
-// Using Carbon
 $accounts = Account::whereDate('CreatedDate', '>=', now()->subDays(30))->get();
 ```
 
-##Ordering Results
+`whereYear()`, `whereMonth()` and `whereDay()` compile to SOQL's `CALENDAR_YEAR()`, `CALENDAR_MONTH()` and `DAY_IN_MONTH()`:
+
+```php
+// WHERE CALENDAR_YEAR(CloseDate) = 2025 and CALENDAR_MONTH(CloseDate) = 03
+Opportunity::whereYear('CloseDate', 2025)->whereMonth('CloseDate', 3)->get();
+```
+
+SOQL date literals such as `TODAY`, `LAST_N_DAYS:30` and `THIS_FISCAL_QUARTER` pass through unquoted:
+
+```php
+Opportunity::where('CloseDate', '>', 'LAST_N_DAYS:30')->get();
+```
+
+Strings are only sent unquoted when they're exactly a date (`2025-01-31`) or datetime (`2025-01-31T10:00:00Z`). Anything else is quoted and escaped like any other value. Fields on a related object (`Account.CreatedDate`) aren't looked up, so pass those as Carbon instances.
+
+## Ordering Results
 
 ### Order By
 
@@ -297,8 +328,10 @@ $result = $adapter->query('
 foreach ($result['records'] as $record) {
     echo $record['Name'] . "\n";
 
+    // A child subquery comes back as a plain list of rows (null when there are none).
+    // Every page is fetched, so the list is complete.
     if (isset($record['Contacts'])) {
-        foreach ($record['Contacts']['records'] as $contact) {
+        foreach ($record['Contacts'] as $contact) {
             echo "  - {$contact['FirstName']} {$contact['LastName']}\n";
         }
     }
@@ -308,7 +341,7 @@ foreach ($result['records'] as $record) {
 ### When to Use Raw Queries
 
 Use raw SOQL when you need:
-- Subqueries (child relationships)
+- Child subqueries outside a model relationship (for model relationships, `with()` already uses a subquery; see [Eager Loading](relationships.md#eager-loading))
 - Complex GROUP BY clauses
 - SOQL-specific functions (CALENDAR_YEAR, FORMAT, etc.)
 - Relationship queries not yet supported by the builder
@@ -324,8 +357,11 @@ $soql = Account::where('Industry', 'Technology')
     ->toSql();
 
 echo $soql;
-// Output: SELECT Id, Name, Industry FROM Account WHERE Industry = 'Technology' ORDER BY Name ASC
+// Output (the exact SOQL that would be sent; `*` expands to every field):
+// select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, Industry, ... from Account where Industry = 'Technology' order by Name asc
 ```
+
+`toRawSql()` returns the same string, and `dumpRawSql()` / `ddRawSql()` dump it.
 
 ### Enable Query Logging
 
@@ -400,7 +436,12 @@ Account::where('Industry', 'Technology')
             $this->processAccount($account);
         }
     });
+
+// each() and lazy() work the same way
+Account::where('Industry', 'Technology')->lazy()->each(fn ($account) => $this->processAccount($account));
 ```
+
+Salesforce caps SOQL `OFFSET` at 2000, so `chunk()`, `each()` and `lazy()` page by `Id` instead (`where Id > '…' order by Id`), which works for any number of records. That needs a query with no `orderBy()`, `offset()` or `limit()` of its own. With one of those, they page with `OFFSET` and stop working past 2,000 records. Use `chunkById()` / `lazyById()`, or `cursorPaginate()` for paged UIs.
 
 ## Query Examples
 
@@ -498,7 +539,7 @@ Be aware of Salesforce SOQL limitations:
 - **Query Timeout**: Queries timeout after 120 seconds
 - **Record Limits**: Max 2000 records per query (use pagination for more)
 - **No Joins**: SOQL doesn't support traditional SQL joins (use relationships instead)
-- **No Column-to-Column Comparisons**: SOQL does not support comparing one field to another in WHERE clauses. Consequently, Eloquent's whereColumn is not supported by this package. Use relationship constraints (whereHas/has) or SOQL semi-joins instead, e.g., `Id IN (SELECT Lookup__c FROM Child__c WHERE ...)`.
+- **No Column-to-Column Comparisons**: SOQL does not support comparing one field to another in WHERE clauses. Consequently, Eloquent's whereColumn is not supported by this package. The same applies to `has()`, `whereHas()`, `doesntHave()` and `withCount()`, which compile to column comparisons. Use a semi-join instead, e.g. `->whereIn('Id', fn ($q) => $q->select('Lookup__c')->from('Child__c')->where(...))`, or relationship dot notation such as `where('Account.Industry', 'Technology')`. See [Querying Relationships](relationships.md#querying-relationships).
 
 ## Next Steps
 

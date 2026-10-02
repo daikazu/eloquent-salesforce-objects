@@ -18,6 +18,7 @@ Creates `config/eloquent-salesforce-objects.php`.
 |-----|---------|-------------|
 | `default_page_size` | `200` | Records per page when paginating (max 2000) |
 | `bulk_operation_size` | `200` | Records per bulk insert/update/delete (max 200) |
+| `eager_load_strategy` | `subquery` | How `with()` loads `hasMany`/`hasOne`: `subquery` nests the children in the parent query; `query` runs a separate `where ... in (...)` query. See [Eager Loading](relationships.md#eager-loading) |
 | `batch_size` | `25` | Queries per batch request (max 25) |
 | `metadata_cache_ttl` | `86400` | Seconds to cache describe results (default 24h) |
 

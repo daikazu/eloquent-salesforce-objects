@@ -2,6 +2,8 @@
 
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
+use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\AccountWithRefreshes;
+use Illuminate\Database\Eloquent\Attributes\Refreshes;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -508,3 +510,77 @@ describe('full CRUD workflow', function () {
         expect($account->exists)->toBeFalse();
     });
 });
+
+describe('insertGetId and toRawSql', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+    });
+
+    it('insertGetId() creates the record and returns its Id', function () {
+        Forrest::shouldReceive('sobjects')->once()
+            ->with('Account', Mockery::on(fn ($args) => $args['method'] === 'post' && $args['body'] === ['Name' => 'Acme']))
+            ->andReturn(['id' => '001xx000003DGb2AAG', 'success' => true, 'errors' => []]);
+
+        expect(Account::insertGetId(['Name' => 'Acme']))->toBe('001xx000003DGb2AAG');
+    });
+
+    it('fillAndInsertGetId() sends the filled values without the type metadata', function () {
+        Forrest::shouldReceive('sobjects')->once()
+            ->with('Account', Mockery::on(fn ($args) => $args['body'] === ['Name' => 'Acme']))
+            ->andReturn(['id' => '001xx000003DGb2AAG', 'success' => true, 'errors' => []]);
+
+        expect(Account::fillAndInsertGetId(['Name' => 'Acme']))->toBe('001xx000003DGb2AAG');
+    });
+
+    it('toRawSql() returns the exact SOQL, like toSql()', function () {
+        Forrest::shouldReceive('describe')->andReturn(['fields' => [['name' => 'Id']]]);
+
+        $query = Account::select(['Id'])->where('Name', "O'Brien")->where('IsActive', true);
+
+        expect($query->toRawSql())->toBe("select Id from Account where Name = 'O\\'Brien' and IsActive = TRUE");
+        expect($query->toRawSql())->toBe($query->toSql());
+    });
+});
+
+it('the base query builder\'s toRawSql() uses SOQL escaping instead of crashing on PDO', function () {
+    Forrest::shouldReceive('hasToken')->andReturn(true);
+
+    expect(Account::select(['Id'])->where('Name', "O'Brien")->toBase()->toRawSql())
+        ->toBe("select Id from Account where Name = 'O\\'Brien'");
+});
+
+describe('#[Refreshes] (Laravel 13.33+)', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+    });
+
+    function expectRefreshQuery(string $value): void
+    {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Rating_Formula__c from Account where Id = '001A' limit 1")
+            ->andReturn(['totalSize' => 1, 'done' => true, 'records' => [['Rating_Formula__c' => $value]]]);
+    }
+
+    it('re-reads the listed fields after an insert', function () {
+        Forrest::shouldReceive('sobjects')->once()->andReturn(['id' => '001A', 'success' => true, 'errors' => []]);
+        expectRefreshQuery('Hot');
+
+        $account = AccountWithRefreshes::create(['Name' => 'Acme']);
+
+        expect($account->Rating_Formula__c)->toBe('Hot');
+        expect($account->isDirty())->toBeFalse();
+    });
+
+    it('re-reads the listed fields after an update', function () {
+        Forrest::shouldReceive('sobjects')->once()->andReturn(null);
+        expectRefreshQuery('Cold');
+
+        $account = (new AccountWithRefreshes)->newFromBuilder(['Id' => '001A', 'Name' => 'Acme']);
+        $account->Name = 'Acme Corp';
+        $account->save();
+
+        expect($account->Rating_Formula__c)->toBe('Cold');
+    });
+})->skip(! class_exists(Refreshes::class), 'Requires Laravel 13.33+');

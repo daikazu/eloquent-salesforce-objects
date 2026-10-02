@@ -5,28 +5,51 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use BadMethodCallException;
+use Closure;
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
+use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class SOQLBuilder extends Builder
 {
+    use LogsSalesforceErrors;
+
     protected array $noSoftDeletes;
-    protected bool $throwExceptions;
     protected int $bulkOperationSize;
     protected bool $shouldIgnoreDefaults = false;
+
+    /**
+     * Relationships the last getModels() call loaded through child subqueries.
+     *
+     * @var array<int, string>
+     */
+    protected array $subqueryEagerLoaded = [];
+
+    /** Salesforce allows at most 20 parent-to-child subqueries per query. */
+    private const int MAX_CHILD_SUBQUERIES = 20;
+
+    /**
+     * Parents per "where key in (...)" eager-load query. Forrest sends SOQL in the URL,
+     * and a real org rejected the request at ~600 Ids; 400 worked.
+     */
+    private const int EAGER_LOAD_CHUNK_SIZE = 200;
     private SOQLGrammar $soqlGrammar;
 
     public function __construct(
-        private readonly SalesforceAdapter $adapter,
+        private readonly AdapterInterface $adapter,
         QueryBuilder $query
     ) {
         $connection = new SOQLConnection($this->adapter);
@@ -39,7 +62,6 @@ class SOQLBuilder extends Builder
 
         // Cache config values for performance
         $this->noSoftDeletes = config('eloquent-salesforce-objects.no_soft_deletes', ['User']);
-        $this->throwExceptions = config('eloquent-salesforce-objects.throw_exceptions', true);
         $this->bulkOperationSize = config('eloquent-salesforce-objects.bulk_operation_size', 200);
     }
 
@@ -73,79 +95,359 @@ class SOQLBuilder extends Builder
         );
     }
 
+    /**
+     * Render the query as the SOQL string that would be sent to Salesforce.
+     *
+     * Bindings go through the same escaping as executed queries, and a bare
+     * `*` column list is expanded to the object's fields.
+     */
     public function toSql()
     {
-        $columns = implode(', ', $this->describe());
-        $query = str_replace('*', $columns, parent::toSql());
-        $query = str_replace('`', '', $query);
+        $query = $this->baseQueryWithColumns();
 
-        $bindings = array_map(
-            fn ($value) => Str::replace("'", "\'", $value),
-            $this->getBindings()
-        );
+        /** @var SOQLConnection $connection */
+        $connection = $query->getConnection();
 
-        return Str::replaceArray('?', $bindings, $query);
+        return $connection->substituteBindings($query->toSql(), $query->getBindings());
+    }
+
+    /**
+     * A copy of the base query with scopes applied and a bare `*` expanded to the object's fields.
+     */
+    protected function baseQueryWithColumns(): QueryBuilder
+    {
+        $query = $this->toBase()->clone();
+
+        if ($query->columns === null || $query->columns === ['*']) {
+            $query->columns = $this->describe();
+        }
+
+        return $query;
+    }
+
+    /**
+     * The exact SOQL that would be sent. Laravel's version escapes bindings for SQL
+     * through PDO, which this connection doesn't have.
+     */
+    public function toRawSql(): string
+    {
+        return $this->toSql();
+    }
+
+    public function dumpRawSql(): static
+    {
+        $this->baseQueryWithColumns()->dumpRawSql();
+
+        return $this;
+    }
+
+    public function ddRawSql(): never
+    {
+        $this->baseQueryWithColumns()->ddRawSql();
     }
 
     public function getModels($columns = ['*']): array
     {
-        // Check if we should use default columns
-        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
-        $useDefaults = $defaultColumns !== null && in_array('*', $columns) && ! $this->shouldIgnoreDefaults;
+        $columns = $this->resolveSelectColumns($columns);
 
-        if ($useDefaults) {
-            $cols = $defaultColumns;
+        $this->subqueryEagerLoaded = [];
+        $subqueries = $this->buildChildSubqueries();
 
-            // Always ensure Id is included
-            if (! in_array('Id', $cols)) {
-                array_unshift($cols, 'Id');
-            }
-
-            // Make sure the required timestamp columns are included
-            if (! in_array('CreatedDate', $cols)) {
-                $cols[] = 'CreatedDate';
-            }
-
-            if (! in_array('LastModifiedDate', $cols)) {
-                $cols[] = 'LastModifiedDate';
-            }
-
-            // Make sure soft delete column is included if model supports soft deletes
-            $supportsSoftDeletes = ! in_array($this->model->getTable(), $this->noSoftDeletes);
-
-            if ($supportsSoftDeletes && ! in_array('IsDeleted', $cols)) {
-                $cols[] = 'IsDeleted';
-            }
-
-            // Resolve the final columns through adapter
-            $cols = $this->getSalesForceColumns($cols);
-        } else {
-            $cols = $this->getSalesForceColumns($columns);
+        if ($subqueries === []) {
+            return parent::getModels($columns);
         }
 
-        return parent::getModels($cols);
+        // Add the child subqueries to the select list for this one query only
+        $original = $this->query->columns;
+        $selected = ($original === null || in_array('*', $original)) ? $columns : $original;
+
+        $this->query->columns = [
+            ...$selected,
+            ...array_map(fn (array $subquery): Expression => new Expression("({$subquery['soql']})"), $subqueries),
+        ];
+
+        try {
+            $models = parent::getModels($columns);
+        } finally {
+            $this->query->columns = $original;
+        }
+
+        $this->subqueryEagerLoaded = array_keys($subqueries);
+
+        return $this->hydrateChildSubqueries($models, $subqueries);
+    }
+
+    /**
+     * Eager load the relationships that getModels() didn't already load through a subquery.
+     */
+    public function eagerLoadRelations(array $models)
+    {
+        if ($this->subqueryEagerLoaded === []) {
+            return parent::eagerLoadRelations($models);
+        }
+
+        $eagerLoad = $this->eagerLoad;
+
+        $this->eagerLoad = array_filter(
+            $eagerLoad,
+            fn (string $name): bool => ! in_array(explode('.', $name)[0], $this->subqueryEagerLoaded, true),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        try {
+            return parent::eagerLoadRelations($models);
+        } finally {
+            $this->eagerLoad = $eagerLoad;
+            $this->subqueryEagerLoaded = [];
+        }
+    }
+
+    /**
+     * Run the "where key in (...)" eager load in groups of parents, so the Id list
+     * stays within Salesforce's request size. A parent's children always come back
+     * in its own group, so per-parent ordering is unaffected.
+     *
+     * @param  array<int, Model>  $models
+     * @param  string  $name
+     * @return array<int, Model>
+     */
+    protected function eagerLoadRelation(array $models, $name, Closure $constraints)
+    {
+        if (count($models) <= self::EAGER_LOAD_CHUNK_SIZE) {
+            return parent::eagerLoadRelation($models, $name, $constraints);
+        }
+
+        $loaded = [];
+
+        foreach (array_chunk($models, self::EAGER_LOAD_CHUNK_SIZE) as $chunk) {
+            array_push($loaded, ...parent::eagerLoadRelation($chunk, $name, $constraints));
+        }
+
+        return $loaded;
+    }
+
+    /**
+     * Expand ['*'] to the model's default columns, or to every field.
+     *
+     * @return array<int, mixed>
+     */
+    protected function resolveSelectColumns(array $columns): array
+    {
+        if (in_array('*', $columns)) {
+            $columns = $this->resolveDefaultColumns() ?? $columns;
+        }
+
+        return $this->getSalesForceColumns($columns);
+    }
+
+    /**
+     * Build a parent-to-child subquery for each eager-loaded hasMany/hasOne that SOQL can
+     * express that way. The rest are left for the normal "where key in (...)" eager load.
+     *
+     * @return array<string, array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}>
+     */
+    protected function buildChildSubqueries(): array
+    {
+        if (config('eloquent-salesforce-objects.eager_load_strategy', 'subquery') !== 'subquery'
+            || ! $this->model instanceof SalesforceModel) {
+            return [];
+        }
+
+        $subqueries = [];
+
+        foreach ($this->eagerLoad as $name => $constraints) {
+            if (str_contains($name, '.') || count($subqueries) >= self::MAX_CHILD_SUBQUERIES) {
+                continue;
+            }
+
+            $subquery = $this->buildChildSubquery($name, $constraints);
+
+            if ($subquery !== null) {
+                $subqueries[$name] = $subquery;
+            }
+        }
+
+        return $subqueries;
+    }
+
+    /**
+     * @return array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}|null
+     */
+    protected function buildChildSubquery(string $name, Closure $constraints): ?array
+    {
+        // getRelation() also queues nested relations ("contacts.cases") on the child query
+        $relation = $this->getRelation($name);
+
+        if (! ($relation instanceof SOQLHasMany || $relation instanceof SOQLHasOne)
+            || ! $relation->getRelated() instanceof SalesforceModel
+            || $relation->getLocalKeyName() !== 'Id') {
+            return null;
+        }
+
+        $relationshipName = $this->adapter->childRelationshipName(
+            $this->model,
+            $relation->getRelated()->getTable(),
+            $relation->getForeignKeyName()
+        );
+
+        if ($relationshipName === null) {
+            return null;
+        }
+
+        $constraints($relation);
+
+        /** @var SOQLBuilder $child */
+        $child = $relation->getQuery();
+        $query = $child->applyScopes()->getQuery()->clone();
+
+        // Subqueries can't use these; leave the relationship to the normal eager load
+        if ($query->offset !== null || $query->unions !== null || $query->aggregate !== null
+            || ! empty($query->groups) || ! empty($query->havings) || ! empty($query->joins)
+            || $query->distinct !== false || $query->lock !== null) {
+            return null;
+        }
+
+        // limit() on an eager-loaded relation sets a per-parent group limit, which a
+        // subquery LIMIT gives us directly. A hasOne only ever needs one row.
+        $limit = $query->groupLimit['value'] ?? $query->limit;
+        $query->groupLimit = null;
+        $query->limit = $relation instanceof SOQLHasOne ? 1 : $limit;
+
+        $query->columns = $child->resolveSelectColumns($query->columns ?? ['*']);
+
+        // Relation::match() pairs children with parents by the foreign key, so always select it
+        if (! in_array($relation->getForeignKeyName(), $query->columns, true)) {
+            $query->columns[] = $relation->getForeignKeyName();
+        }
+
+        $query->from = $relationshipName;
+
+        /** @var SOQLConnection $connection */
+        $connection = $query->getConnection();
+
+        return [
+            'relation' => $relation,
+            'child'    => $child,
+            'key'      => $relationshipName,
+            'soql'     => $connection->substituteBindings($query->getGrammar()->compileSelect($query), $query->getBindings()),
+        ];
+    }
+
+    /**
+     * Turn the nested subquery results on each parent into loaded relations.
+     *
+     * The children go through the same steps as Laravel's own eager load (nested eager
+     * loads, afterQuery callbacks, then Relation::match()), so chaperone(), withDefault()
+     * and afterQuery() behave as they do for a separate query.
+     *
+     * @param  array<int, Model>  $models
+     * @param  array<string, array{relation: HasOneOrMany, child: SOQLBuilder, key: string, soql: string}>  $subqueries
+     * @return array<int, Model>
+     */
+    protected function hydrateChildSubqueries(array $models, array $subqueries): array
+    {
+        foreach ($subqueries as $name => ['relation' => $relation, 'child' => $child, 'key' => $key]) {
+            $rows = [];
+
+            foreach ($models as $model) {
+                $attributes = $model->getAttributes();
+
+                if (is_array($attributes[$key] ?? null)) {
+                    array_push($rows, ...$attributes[$key]);
+                }
+
+                // The raw nested result isn't a field; keep it out of attributes and saves
+                unset($attributes[$key]);
+                $model->setRawAttributes($attributes, true);
+            }
+
+            $children = $child->hydrate($rows)->all();
+
+            // Nested relations ("opportunities.lineItems") load on the children in one go
+            if ($children !== []) {
+                $children = $child->eagerLoadRelations($children);
+            }
+
+            $models = $relation->match(
+                $relation->initRelation($models, $name),
+                $child->applyAfterQueryCallbacks($relation->getRelated()->newCollection($children)),
+                $name
+            );
+        }
+
+        return $models;
     }
 
     public function cursor()
     {
-        // Use defaultColumns if set and no explicit columns specified
-        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
-        $shouldUseDefaults = $defaultColumns !== null &&
-                           (! $this->query->columns || in_array('*', $this->query->columns)) &&
-                           ! $this->shouldIgnoreDefaults;
+        $columns = $this->query->columns;
 
-        if ($shouldUseDefaults) {
-            $cols = $defaultColumns;
-
-            // Always ensure Id is included
-            if (! in_array('Id', $cols)) {
-                array_unshift($cols, 'Id');
-            }
-
-            $this->query->columns = $cols;
+        // SOQL has no "select *", so expand it here; the connection's cursor() won't
+        if ($columns === null || in_array('*', $columns)) {
+            $this->query->columns = $this->getSalesForceColumns($this->resolveDefaultColumns() ?? ['*']);
         }
 
         return parent::cursor();
+    }
+
+    /**
+     * The model's default columns plus the columns every query needs, or null
+     * when the model has none or allColumns() was called.
+     *
+     * @return array<int, string>|null
+     */
+    protected function resolveDefaultColumns(): ?array
+    {
+        $defaultColumns = $this->model instanceof SalesforceModel ? $this->model->getDefaultColumns() : null;
+
+        if ($defaultColumns === null || $this->shouldIgnoreDefaults) {
+            return null;
+        }
+
+        $required = ['CreatedDate', 'LastModifiedDate'];
+
+        if (! in_array($this->model->getTable(), $this->noSoftDeletes)) {
+            $required[] = 'IsDeleted';
+        }
+
+        return array_values(array_unique(['Id', ...$defaultColumns, ...$required]));
+    }
+
+    /**
+     * Chunk the results. Salesforce caps OFFSET at 2000, so a query without its own
+     * order, offset or limit pages by Id instead ("Id > last order by Id").
+     *
+     * @param  int  $count
+     */
+    public function chunk($count, callable $callback): bool
+    {
+        return $this->canPageById()
+            ? $this->chunkById($count, $callback, 'Id')
+            : parent::chunk($count, $callback);
+    }
+
+    /**
+     * Lazily iterate the results, paging by Id when possible (see chunk()).
+     *
+     * @param  int  $chunkSize
+     */
+    public function lazy($chunkSize = 1000)
+    {
+        return $this->canPageById()
+            ? $this->lazyById($chunkSize, 'Id')
+            : parent::lazy($chunkSize);
+    }
+
+    /**
+     * Whether paging by Id returns the same rows as OFFSET paging would: only when
+     * the query sets no order, offset or limit of its own.
+     */
+    protected function canPageById(): bool
+    {
+        $query = $this->getQuery();
+
+        return empty($query->orders) && empty($query->unionOrders)
+            && $query->offset === null && $query->limit === null;
     }
 
     /**
@@ -165,7 +467,7 @@ class SOQLBuilder extends Builder
      */
     public function paginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null, $total = null)
     {
-        $columns = $this->getSalesForceColumns($columns);
+        $columns = $this->resolveSelectColumns($columns);
 
         // Only run COUNT query if total wasn't provided
         if ($total === null) {
@@ -210,13 +512,14 @@ class SOQLBuilder extends Builder
      */
     public function simplePaginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null)
     {
-        $columns = $this->getSalesForceColumns($columns);
+        $columns = $this->resolveSelectColumns($columns);
 
         $page = $page ?: Paginator::resolveCurrentPage($pageName);
         $perPage = $perPage ?: $this->model->getPerPage();
 
-        // Fetch one extra record to determine if there's a next page
-        $this->forPage($page, $perPage + 1);
+        // Fetch one extra record to determine if there's a next page. The offset
+        // must use $perPage, not $perPage + 1, or each page skips a record.
+        $this->offset(($page - 1) * $perPage)->limit($perPage + 1);
 
         $results = $this->get($columns);
 
@@ -255,25 +558,256 @@ class SOQLBuilder extends Builder
             try {
                 $response = $this->adapter->bulkCreate($table, $chunk->toArray(), $allOrNone);
 
-                // Collect results from the response
-                if (isset($response['results'])) {
-                    foreach ($response['results'] as $result) {
-                        $results->push($result);
-                    }
-                } else {
-                    // Fallback if response format is different
-                    $results->push($response);
+                foreach ($this->extractSaveResults($response) ?? [$response] as $result) {
+                    $results->push($result);
                 }
             } catch (Exception $e) {
-                // Log and handle exception based on config
-                if ($this->throwExceptions) {
-                    throw $e;
-                }
-                // Continue to next chunk if not throwing
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk insert');
             }
         }
 
         return $results;
+    }
+
+    /**
+     * Create one record and return its Salesforce Id.
+     *
+     * @param  array<string, mixed>  $values
+     * @param  string|null  $sequence  Unused; Salesforce always returns the record Id
+     */
+    public function insertGetId(array $values, $sequence = null): ?string
+    {
+        // fillAndInsertGetId() passes a filled model's attributes, including the type metadata
+        unset($values['attributes']);
+
+        return $this->adapter->create($this->model->getTable(), $this->prepareWriteValues($values))['id'] ?? null;
+    }
+
+    /**
+     * Extract per-record save results from a Composite SObject Collections response.
+     *
+     * Salesforce returns a top-level array of save results; a 'results' wrapper is
+     * also accepted. Returns null when the response holds no per-record results.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function extractSaveResults(mixed $response): ?array
+    {
+        if (! is_array($response)) {
+            return null;
+        }
+
+        if (isset($response['results']) && is_array($response['results'])) {
+            return $response['results'];
+        }
+
+        if ($response !== [] && array_is_list($response)) {
+            return $response;
+        }
+
+        return null;
+    }
+
+    /**
+     * Count the records a Composite SObject Collections response reports as saved.
+     * Without per-record results, assume the whole request succeeded.
+     */
+    protected function countSuccesses(mixed $response, int $requested): int
+    {
+        $saveResults = $this->extractSaveResults($response);
+
+        if ($saveResults === null) {
+            return $requested;
+        }
+
+        return count(array_filter($saveResults, fn ($result): bool => (bool) ($result['success'] ?? false)));
+    }
+
+    /**
+     * Update the records matching the query, 200 per Composite request.
+     *
+     * Like Laravel's query update(), this skips model events. Returns how many records saved.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function update(array $values): int
+    {
+        foreach ($values as $field => $value) {
+            if ($value instanceof Expression) {
+                throw new InvalidArgumentException(
+                    "Cannot update [{$field}] with a raw expression: Salesforce can't compute a field from its current value. "
+                    . 'Load the records, set the value and save() them instead.'
+                );
+            }
+        }
+
+        if ($values === []) {
+            return 0;
+        }
+
+        $ids = $this->toBase()->pluck('Id');
+
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        $values = $this->prepareWriteValues($values);
+
+        $table = $this->model->getTable();
+        $updated = 0;
+
+        foreach ($ids->chunk($this->bulkOperationSize) as $chunk) {
+            $records = $chunk->map(fn ($id): array => ['Id' => $id] + $values)->values()->all();
+
+            try {
+                $updated += $this->countSuccesses($this->adapter->bulkUpdate($table, $records), count($records));
+            } catch (Exception $e) {
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk update');
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Insert or update records by an External Id field, 200 per Composite request.
+     *
+     * Salesforce matches on exactly one External Id field and updates every field sent,
+     * so $update may only be null or list every field in the rows. Returns how many saved.
+     *
+     * @param  array<int|string, mixed>  $values  One row, or a list of rows
+     * @param  string|array<int, string>  $uniqueBy  The External Id field
+     * @param  array<int, string>|null  $update
+     */
+    public function upsert(array $values, $uniqueBy, $update = null): int
+    {
+        if ($values === []) {
+            return 0;
+        }
+
+        if (! is_array(reset($values))) {
+            $values = [$values];
+        }
+
+        $uniqueBy = (array) $uniqueBy;
+
+        if (count($uniqueBy) !== 1) {
+            throw new InvalidArgumentException('Salesforce upsert matches on exactly one External Id field; pass one field name as $uniqueBy.');
+        }
+
+        $field = (string) reset($uniqueBy);
+
+        foreach ($values as $index => $row) {
+            if (($row[$field] ?? null) === null || $row[$field] === '') {
+                throw new InvalidArgumentException("Row {$index} has no {$field} value, which Salesforce upsert needs to match records.");
+            }
+        }
+
+        if ($update !== null) {
+            $sent = array_diff(array_keys(array_merge(...array_values($values))), [$field]);
+            $missing = array_diff($sent, array_values($update));
+
+            if ($missing !== [] || ! array_is_list($update)) {
+                throw new InvalidArgumentException(
+                    'Salesforce upsert updates every field you send, so $update must be null or list all of them (missing: '
+                    . implode(', ', $missing) . '). To update only some fields, send only those fields.'
+                );
+            }
+        }
+
+        $table = $this->model->getTable();
+        $saved = 0;
+
+        foreach (array_chunk($values, $this->bulkOperationSize) as $chunk) {
+            $records = array_map(fn (array $row): array => $this->prepareWriteValues($row), $chunk);
+
+            try {
+                $saved += $this->countSuccesses($this->adapter->bulkUpsert($table, $field, $records), count($records));
+            } catch (Exception $e) {
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk upsert');
+            }
+        }
+
+        return $saved;
+    }
+
+    /**
+     * Format values for the Salesforce API: dates as UTC ISO 8601.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    protected function prepareWriteValues(array $values): array
+    {
+        return array_map(
+            fn ($value) => $value instanceof DateTimeInterface
+                ? DateTimeImmutable::createFromInterface($value)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z')
+                : $value,
+            $values
+        );
+    }
+
+    /**
+     * Set the given column(s) to the current time on the matching records.
+     *
+     * @param  string|array<int, string>|null  $column
+     */
+    public function touch($column = null)
+    {
+        $time = $this->model->freshTimestampString();
+
+        if ($column !== null) {
+            return $this->update(array_fill_keys((array) $column, $time));
+        }
+
+        // SalesforceModel has timestamps off: LastModifiedDate is set by Salesforce
+        if (! $this->model->usesTimestamps()) {
+            return false;
+        }
+
+        return $this->update([$this->model->getUpdatedAtColumn() => $time]);
+    }
+
+    public const string INCREMENT_UNSUPPORTED = 'Salesforce has no atomic increment, so query-level increment()/decrement() '
+        . 'is not supported. Load the records and call $model->increment() on each (not atomic), or use update() with explicit values.';
+
+    /**
+     * @param  string  $column
+     * @param  float|int  $amount
+     */
+    public function increment($column, $amount = 1, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    /**
+     * @param  string  $column
+     * @param  float|int  $amount
+     */
+    public function decrement($column, $amount = 1, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    public function incrementEach(array $columns, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    public function decrementEach(array $columns, array $extra = []): never
+    {
+        throw new InvalidArgumentException(self::INCREMENT_UNSUPPORTED);
+    }
+
+    /**
+     * Salesforce models have no soft-delete column to bypass, so this deletes like delete().
+     */
+    public function forceDelete(): int
+    {
+        return $this->delete();
     }
 
     /**
@@ -307,41 +841,31 @@ class SOQLBuilder extends Builder
      */
     public function delete($allOrNone = false): int
     {
-        $models = collect($this->getModels());
+        // Only the Ids are needed, so don't fetch every column
+        $ids = $this->toBase()->pluck('Id');
 
-        if ($models->isEmpty()) {
+        if ($ids->isEmpty()) {
             return 0;
         }
 
         $table = $this->model->getTable();
         $deleted = 0;
 
-        // Extract IDs from models
-        $ids = $models->pluck('Id')->toArray();
-
         // Chunk into batches (Salesforce limit for composite API is 200)
-        $chunks = collect($ids)->chunk($this->bulkOperationSize);
+        $chunks = $ids->chunk($this->bulkOperationSize);
 
         foreach ($chunks as $chunk) {
             try {
                 $response = $this->adapter->bulkDelete($table, $chunk->toArray(), $allOrNone);
 
-                // Count successful deletes from response
-                if (isset($response['results'])) {
-                    foreach ($response['results'] as $result) {
-                        if ($result['success'] ?? false) {
-                            $deleted++;
-                        }
-                    }
-                } else {
-                    // If no detailed results, assume all succeeded
-                    $deleted += $chunk->count();
-                }
+                $deleted += $this->countSuccesses($response, $chunk->count());
             } catch (Exception $e) {
-                if ($allOrNone || $this->throwExceptions) {
+                // Logs, then rethrows unless throw_exceptions is off
+                $this->handleSalesforceException($e, 'bulk delete');
+
+                if ($allOrNone) {
                     throw $e;
                 }
-                // Continue to next chunk if not throwing
             }
         }
 
@@ -401,11 +925,30 @@ class SOQLBuilder extends Builder
     }
 
     /**
-     * SOQL does not support the SQL TIME() function the same way; delegate to basic where
+     * Reject join(), leftJoin(), joinSub() and friends before they reach the query builder.
+     *
+     * @param  string  $method
+     * @param  array  $parameters
      */
-    public function whereTime(...$args)
+    public function __call($method, $parameters)
     {
-        return $this->where(...$args);
+        if (stripos($method, 'join') !== false) {
+            throw new InvalidArgumentException(SOQLGrammar::JOINS_UNSUPPORTED);
+        }
+
+        // Query builder writes with no Salesforce form; fail before they reach PDO-only code
+        $unsupported = match (strtolower($method)) {
+            'insertorignore', 'insertorignorereturning', 'insertorignoreusing' => SOQLGrammar::INSERT_OR_IGNORE_UNSUPPORTED,
+            'insertusing'                                                      => 'SOQL cannot insert from a query. Query the records, then insert() them.',
+            'updateorinsert'                                                   => 'updateOrInsert() is not supported. Use updateOrCreate() for one record, or upsert() with an External Id field.',
+            default                                                            => null,
+        };
+
+        if ($unsupported !== null) {
+            throw new InvalidArgumentException($unsupported);
+        }
+
+        return parent::__call($method, $parameters);
     }
 
     /**
@@ -421,11 +964,9 @@ class SOQLBuilder extends Builder
         // Salesforce SOQL does not support column-to-column comparisons in WHERE clauses.
         // Generating such queries will lead to MALFORMED_QUERY errors like:
         //   unexpected token: 'Some__r.Field__c'
-        // Suggest alternatives that SOQL supports.
-        throw new InvalidArgumentException(
-            'SOQL does not support whereColumn (column-to-column comparisons). ' .
-            'Use relationship constraints (whereHas/has) or a semi-join: "Id IN (SELECT Lookup__c FROM Child__c WHERE ...)".'
-        );
+        // Eloquent's has()/whereHas()/doesntHave()/withCount() also compile to whereColumn,
+        // so this is where they fail too. Suggest the semi-join SOQL does support.
+        throw new InvalidArgumentException(SOQLGrammar::COLUMN_COMPARISON_UNSUPPORTED);
     }
 
     /**
@@ -529,10 +1070,8 @@ class SOQLBuilder extends Builder
      */
     public function exists(): bool
     {
-        // Clone the query to avoid mutating the builder's limit state
-        $query = $this->clone();
-
-        $results = $query->limit(1)->get(['Id']);
+        // Query the base builder on a clone: no eager loads, and the limit doesn't stick
+        $results = $this->clone()->toBase()->limit(1)->get(['Id']);
 
         return count($results) > 0;
     }

@@ -66,6 +66,30 @@ $perPage = request('per_page', 20); // Default 20
 $accounts = Account::paginate($perPage);
 ```
 
+### Default Page Size
+
+When you don't pass a page size, `paginate()` and `simplePaginate()` use the `default_page_size` config value (200 by default, set with `SALESFORCE_PAGE_SIZE`) instead of Eloquent's usual 15:
+
+```php
+// Uses default_page_size (200)
+$accounts = Account::paginate();
+```
+
+```env
+SALESFORCE_PAGE_SIZE=50
+```
+
+A model can set its own default with `$perPage`, which takes priority over the config:
+
+```php
+class Contact extends SalesforceModel
+{
+    protected $perPage = 25;
+}
+```
+
+The priority order is: an explicit `paginate($perPage)` argument, then the model's `$perPage` (or `setPerPage()`), then `default_page_size`.
+
 ### Pagination with Conditions
 
 ```php

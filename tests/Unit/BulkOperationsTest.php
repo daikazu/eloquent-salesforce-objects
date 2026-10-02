@@ -3,7 +3,9 @@
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -666,5 +668,322 @@ describe('bulk operation size limits', function () {
         $results = Account::query()->insert($records);
 
         expect($results)->toBeInstanceOf(Collection::class);
+    });
+});
+
+describe('Composite SObject Collections response shape', function () {
+    // Salesforce returns a top-level JSON array of save results for
+    // POST/DELETE /composite/sobjects, not an object with a 'results' key.
+
+    it('returns one result per record for a top-level array insert response', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        Forrest::shouldReceive('post')
+            ->once()
+            ->andReturn([
+                ['id' => '001xx000001', 'success' => true, 'errors' => []],
+                ['id' => null, 'success' => false, 'errors' => [['statusCode' => 'REQUIRED_FIELD_MISSING', 'message' => 'Required fields are missing: [Name]']]],
+            ]);
+
+        $results = Account::query()->insert([['Name' => 'Company A'], ['Industry' => 'Finance']]);
+
+        expect($results)->toHaveCount(2);
+        expect($results[0]['success'])->toBeTrue();
+        expect($results[0]['id'])->toBe('001xx000001');
+        expect($results[1]['success'])->toBeFalse();
+    });
+
+    it('counts only successful deletes for a top-level array delete response', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        Forrest::shouldReceive('describe')->andReturn([
+            'fields' => [['name' => 'Id'], ['name' => 'Name']],
+        ]);
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->andReturn([
+                'totalSize' => 2,
+                'done'      => true,
+                'records'   => [
+                    ['Id' => '001xx000001', 'attributes' => ['type' => 'Account']],
+                    ['Id' => '001xx000002', 'attributes' => ['type' => 'Account']],
+                ],
+            ]);
+
+        Forrest::shouldReceive('delete')
+            ->once()
+            ->andReturn([
+                ['id' => '001xx000001', 'success' => true, 'errors' => []],
+                ['id' => '001xx000002', 'success' => false, 'errors' => [['statusCode' => 'ENTITY_IS_DELETED']]],
+            ]);
+
+        expect(Account::query()->delete())->toBe(1);
+    });
+});
+
+describe('bulk operation failure logging and id lookup', function () {
+    it('logs a failed insert chunk when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('post')->once()->andThrow(new Exception('Insert chunk failed'));
+
+        expect(Account::query()->insert([['Name' => 'Company A']]))->toHaveCount(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn ($message, $context) => str_contains($message, 'Insert chunk failed')
+                && $context['operation'] === 'bulk insert');
+    });
+
+    it('logs a failed delete chunk when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')->once()->andReturn([
+            'totalSize' => 1,
+            'done'      => true,
+            'records'   => [['Id' => '001xx000001', 'attributes' => ['type' => 'Account']]],
+        ]);
+        Forrest::shouldReceive('delete')->once()->andThrow(new Exception('Delete chunk failed'));
+
+        expect(Account::query()->delete())->toBe(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn ($message, $context) => str_contains($message, 'Delete chunk failed')
+                && $context['operation'] === 'bulk delete');
+    });
+
+    it('selects only Id when finding the records to delete', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with("select Id from Account where Name = 'Gone'")
+            ->andReturn([
+                'totalSize' => 1,
+                'done'      => true,
+                'records'   => [['Id' => '001xx000001', 'attributes' => ['type' => 'Account']]],
+            ]);
+        Forrest::shouldReceive('delete')->once()->andReturn([['id' => '001xx000001', 'success' => true]]);
+
+        expect(Account::where('Name', 'Gone')->delete())->toBe(1);
+    });
+});
+
+describe('adapter bulkUpdate', function () {
+    it('sends up to 200 records per request and merges the results', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        $records = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'Name' => "A{$i}"], range(1, 450));
+        $sizes = [];
+
+        Forrest::shouldReceive('patch')->times(3)
+            ->with('v64.0/composite/sobjects', Mockery::on(function ($args) use (&$sizes) {
+                $sizes[] = count($args['body']['records']);
+
+                return $args['body']['records'][0]['attributes'] === ['type' => 'Account'];
+            }))
+            ->andReturnUsing(fn ($path, $args) => array_map(
+                fn ($record) => ['id' => $record['Id'], 'success' => true, 'errors' => []],
+                $args['body']['records']
+            ));
+
+        $results = app(SalesforceAdapter::class)->bulkUpdate('Account', $records);
+
+        expect($sizes)->toBe([200, 200, 50]);
+        expect($results)->toHaveCount(450);
+        expect($results[449]['id'])->toBe('001xx0000000000450');
+    });
+
+    it('makes one request for 200 records or fewer', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('patch')->once()->andReturn([['id' => '001A', 'success' => true]]);
+
+        expect(app(SalesforceAdapter::class)->bulkUpdate('Account', [['Id' => '001A', 'Name' => 'x']]))->toHaveCount(1);
+    });
+
+    it('makes no request for an empty list', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('patch')->never();
+
+        expect(app(SalesforceAdapter::class)->bulkUpdate('Account', []))->toBe([]);
+    });
+});
+
+describe('query update(), touch() and forceDelete()', function () {
+    beforeEach(function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+    });
+
+    function idsResponse(int $count): array
+    {
+        return [
+            'totalSize' => $count,
+            'done'      => true,
+            'records'   => $count === 0 ? [] : array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'attributes' => ['type' => 'Account']], range(1, $count)),
+        ];
+    }
+
+    it('updates the matching records through bulk update and returns how many succeeded', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with("select Id from Account where Industry = 'Tech'")
+            ->andReturn(idsResponse(3));
+
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects', Mockery::on(fn ($args) => $args['body']['records'] === [
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000001', 'Rating' => 'Hot'],
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000002', 'Rating' => 'Hot'],
+                ['attributes' => ['type' => 'Account'], 'Id' => '001xx0000000000003', 'Rating' => 'Hot'],
+            ]))
+            ->andReturn([
+                ['id' => '001xx0000000000001', 'success' => true],
+                ['id' => '001xx0000000000002', 'success' => false, 'errors' => [['statusCode' => 'FIELD_CUSTOM_VALIDATION_EXCEPTION']]],
+                ['id' => '001xx0000000000003', 'success' => true],
+            ]);
+
+        expect(Account::where('Industry', 'Tech')->update(['Rating' => 'Hot']))->toBe(2);
+    });
+
+    it('sends 200 records per request', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(450));
+        Forrest::shouldReceive('patch')->times(3)->andReturnUsing(
+            fn ($path, $args) => array_map(fn ($r) => ['id' => $r['Id'], 'success' => true], $args['body']['records'])
+        );
+
+        expect(Account::query()->update(['Rating' => 'Hot']))->toBe(450);
+    });
+
+    it('makes no update request when nothing matches', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(0));
+        Forrest::shouldReceive('patch')->never();
+
+        expect(Account::where('Name', 'Nobody')->update(['Rating' => 'Hot']))->toBe(0);
+    });
+
+    it('rejects raw expressions, since Salesforce cannot compute a field from itself', function () {
+        expect(fn () => Account::query()->update(['NumberOfEmployees' => new Expression('NumberOfEmployees + 1')]))
+            ->toThrow(InvalidArgumentException::class, 'raw expression');
+    });
+
+    it('logs a failed request and carries on when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(1));
+        Forrest::shouldReceive('patch')->once()->andThrow(new Exception('Update chunk failed'));
+
+        expect(Account::query()->update(['Rating' => 'Hot']))->toBe(0);
+        Log::shouldHaveReceived('error')->once()->withArgs(fn ($message, $context) => $context['operation'] === 'bulk update');
+    });
+
+    it('touch($column) sets the field to now on the matching records', function () {
+        Carbon\Carbon::setTestNow('2025-06-01 12:00:00');
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(1));
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects', Mockery::on(fn ($args) => $args['body']['records'][0]['Last_Contacted__c'] === '2025-06-01T12:00:00.000+0000'))
+            ->andReturn([['id' => '001xx0000000000001', 'success' => true]]);
+
+        expect(Account::query()->touch('Last_Contacted__c'))->toBe(1);
+        Carbon\Carbon::setTestNow();
+    });
+
+    it('forceDelete() deletes like delete()', function () {
+        Forrest::shouldReceive('query')->once()->andReturn(idsResponse(2));
+        Forrest::shouldReceive('delete')->once()->andReturn([
+            ['id' => '001xx0000000000001', 'success' => true],
+            ['id' => '001xx0000000000002', 'success' => true],
+        ]);
+
+        expect(Account::query()->forceDelete())->toBe(2);
+    });
+});
+
+describe('upsert by External Id', function () {
+    beforeEach(function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+    });
+
+    function upsertResults(array $args): array
+    {
+        return array_map(fn ($r) => ['id' => '001' . $r['External_Id__c'], 'success' => true, 'created' => true], $args['body']['records']);
+    }
+
+    it('adapter bulkUpsert() sends 200 records per request to the upsert endpoint and merges the results', function () {
+        $records = array_map(fn ($i) => ['External_Id__c' => "E{$i}", 'Name' => "A{$i}"], range(1, 450));
+        $sizes = [];
+
+        Forrest::shouldReceive('patch')->times(3)
+            ->with('v64.0/composite/sobjects/Account/External_Id__c', Mockery::on(function ($args) use (&$sizes) {
+                $sizes[] = count($args['body']['records']);
+
+                return $args['body']['allOrNone'] === false
+                    && $args['body']['records'][0]['attributes'] === ['type' => 'Account'];
+            }))
+            ->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        $results = app(SalesforceAdapter::class)->bulkUpsert('Account', 'External_Id__c', $records);
+
+        expect($sizes)->toBe([200, 200, 50]);
+        expect($results)->toHaveCount(450);
+    });
+
+    it('upsert() sends the rows and returns how many saved', function () {
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects/Account/External_Id__c', Mockery::on(fn ($args) => $args['body']['records'] === [
+                ['attributes' => ['type' => 'Account'], 'External_Id__c' => 'E1', 'Name' => 'Acme'],
+                ['attributes' => ['type' => 'Account'], 'External_Id__c' => 'E2', 'Name' => 'Globex'],
+            ]))
+            ->andReturn([
+                ['id' => '001A', 'success' => true, 'created' => true],
+                ['id' => null, 'success' => false, 'errors' => [['statusCode' => 'DUPLICATE_VALUE']]],
+            ]);
+
+        expect(Account::upsert([
+            ['External_Id__c' => 'E1', 'Name' => 'Acme'],
+            ['External_Id__c' => 'E2', 'Name' => 'Globex'],
+        ], 'External_Id__c'))->toBe(1);
+    });
+
+    it('accepts a single row and a one-element uniqueBy array', function () {
+        Forrest::shouldReceive('patch')->once()->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        expect(Account::upsert(['External_Id__c' => 'E1', 'Name' => 'Acme'], ['External_Id__c']))->toBe(1);
+    });
+
+    it('accepts an update list that covers every field sent', function () {
+        Forrest::shouldReceive('patch')->once()->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        expect(Account::upsert([['External_Id__c' => 'E1', 'Name' => 'Acme']], 'External_Id__c', ['Name']))->toBe(1);
+    });
+
+    it('rejects input Salesforce upsert cannot express', function (array $values, mixed $uniqueBy, ?array $update, string $message) {
+        Forrest::shouldReceive('patch')->never();
+
+        expect(fn () => Account::upsert($values, $uniqueBy, $update))
+            ->toThrow(InvalidArgumentException::class, $message);
+    })->with([
+        'two unique fields'      => [[['A__c' => 1, 'B__c' => 2]], ['A__c', 'B__c'], null, 'exactly one External Id field'],
+        'row missing the key'    => [[['External_Id__c' => 'E1'], ['Name' => 'No key']], 'External_Id__c', null, 'has no External_Id__c value'],
+        'partial update columns' => [[['External_Id__c' => 'E1', 'Name' => 'A', 'Phone' => '1']], 'External_Id__c', ['Name'], 'updates every field you send'],
+    ]);
+
+    it('makes no request for no rows', function () {
+        Forrest::shouldReceive('patch')->never();
+
+        expect(Account::upsert([], 'External_Id__c'))->toBe(0);
+    });
+
+    it('logs a failed request and carries on when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+        Forrest::shouldReceive('patch')->once()->andThrow(new Exception('Upsert chunk failed'));
+
+        expect(Account::upsert([['External_Id__c' => 'E1', 'Name' => 'A']], 'External_Id__c'))->toBe(0);
+        Log::shouldHaveReceived('error')->once()->withArgs(fn ($message, $context) => $context['operation'] === 'bulk upsert');
     });
 });

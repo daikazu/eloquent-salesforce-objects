@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Commands;
 
+use Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Console\Command;
 use Throwable;
@@ -14,10 +15,15 @@ class SalesforceTestConnectionCommand extends Command
 
     protected $description = 'Test the Salesforce API connection';
 
-    public function handle(SalesforceAdapter $adapter): int
+    public function handle(SalesforceAdapter $adapter, AuthenticationManager $auth): int
     {
         $this->info('Testing Salesforce connection...');
         $this->newLine();
+
+        if ($auth->usesSoapLogin()) {
+            $this->warn('  ' . AuthenticationManager::SOAP_LOGIN_WARNING);
+            $this->newLine();
+        }
 
         // Test authentication
         try {

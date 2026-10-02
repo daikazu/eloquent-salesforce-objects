@@ -4,10 +4,8 @@
  * Tests for SOQLConnection::prepareBindings() and the full binding pipeline.
  *
  * Architecture notes:
- *  - prepareBindings() is called by prepare(), which is called from select() and cursor()
- *    during actual Salesforce query execution. It is NOT called by toSql().
- *  - SOQLBuilder::toSql() has its own binding substitution that only escapes single quotes
- *    via Str::replace(). It does not convert booleans or DateTimeInterface values.
+ *  - prepareBindings() is called by substituteBindings(), which select(), cursor() and
+ *    SOQLBuilder::toSql() all use, so toSql() renders exactly what gets executed.
  *  - To verify prepareBindings() in isolation, we instantiate SOQLConnection directly.
  *  - To verify the full execution pipeline (prepare → prepareBindings → executeQuery),
  *    we mock Forrest::query and assert the interpolated SOQL string that Salesforce receives.
@@ -133,6 +131,31 @@ describe('SOQLConnection::prepareBindings() — unit', function () {
         // The backslash-quote sequence appears at the start of the result.
         expect($result[0])->toBe("\\'; DELETE FROM Account --");
         expect($result[0])->toStartWith("\\'");
+    });
+
+    it('escapes backslashes before single quotes', function () {
+        $connection = makeConnection();
+
+        $result = $connection->prepareBindings(['C:\\path', "x\\'y"]);
+
+        expect($result[0])->toBe('C:\\\\path');
+        expect($result[1])->toBe("x\\\\\\'y");
+    });
+
+    it('escapes a trailing backslash so it cannot swallow the closing quote', function () {
+        $connection = makeConnection();
+
+        $result = $connection->prepareBindings(['x\\']);
+
+        expect($result[0])->toBe('x\\\\');
+    });
+
+    it('escapes newlines, carriage returns and tabs', function () {
+        $connection = makeConnection();
+
+        $result = $connection->prepareBindings(["a\nb\rc\td"]);
+
+        expect($result[0])->toBe('a\\nb\\rc\\td');
     });
 
     it('leaves integer bindings unchanged', function () {
@@ -309,6 +332,19 @@ describe('prepareBindings() — full execution pipeline via Forrest::query', fun
         Account::where('Name', $injection)->get();
     });
 
+    it('keeps a trailing backslash from breaking out of the string literal', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(bindingsDescribe());
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->with(Mockery::on(fn ($q) => str_contains($q, "Name = 'x\\\\'")
+                && str_contains($q, "Phone = ' OR Id != null OR Name = '")))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::where('Name', 'x\\')->where('Phone', ' OR Id != null OR Name = ')->get();
+    });
+
     it('sends a query with mixed binding types correctly interpolated', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->with('Account')->andReturn(bindingsDescribe());
@@ -330,21 +366,7 @@ describe('prepareBindings() — full execution pipeline via Forrest::query', fun
 });
 
 // ===========================================================================
-// toSql() path: documenting actual query string representation
-//
-// IMPORTANT: SOQLBuilder::toSql() has its own binding substitution path that
-// is separate from prepareBindings(). It calls getBindings() directly and
-// runs Str::replace("'", "\'") on each binding value. It does NOT convert
-// booleans to TRUE/FALSE literals or DateTimeInterface to formatted strings.
-//
-// Key differences from prepareBindings():
-//   - Boolean true  → 1     (not TRUE)
-//   - Boolean false → 0     (not FALSE; may render as empty due to Str::replaceArray behavior)
-//   - Single quotes are escaped in the binding value but the grammar wraps
-//     the whole value in surrounding quotes as part of compiling the WHERE clause
-//
-// These tests document toSql() as-is so regressions can be caught if the
-// method's behavior changes.
+// toSql() path: renders the same SOQL that select() sends to Salesforce
 // ===========================================================================
 
 describe('SOQLBuilder::toSql() — binding representation', function () {
@@ -377,17 +399,32 @@ describe('SOQLBuilder::toSql() — binding representation', function () {
         expect($sql)->not->toContain("'100'");
     });
 
-    it('represents boolean true as 1 in the SQL string (toSql does not call prepareBindings)', function () {
+    it('represents boolean true as the SOQL literal TRUE', function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
         Forrest::shouldReceive('describe')->with('Account')->andReturn(bindingsDescribe());
 
-        // toSql() does not invoke prepareBindings(), so booleans are not converted
-        // to TRUE/FALSE literals. The grammar stores true as 1 in the binding array.
-        // Use get() (which calls prepareBindings()) if you need TRUE/FALSE in SOQL.
         $sql = Account::where('IsActive', true)->toSql();
 
-        expect($sql)->toContain('= 1');
-        expect($sql)->not->toContain('TRUE');
+        expect($sql)->toContain('IsActive = TRUE');
+    });
+
+    it('escapes backslashes the same way as the executed query', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(bindingsDescribe());
+
+        $sql = Account::where('Name', 'x\\')->toSql();
+
+        expect($sql)->toContain("Name = 'x\\\\'");
+    });
+
+    it('only expands the column wildcard, not a * inside a binding', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->with('Account')->andReturn(bindingsDescribe());
+
+        $sql = Account::where('Name', 'A*B')->toSql();
+
+        expect($sql)->toStartWith('select Id, CreatedDate, LastModifiedDate, IsDeleted, Name');
+        expect($sql)->toContain("Name = 'A*B'");
     });
 
     it('escapes a single quote in a SOQL injection attempt in the SQL string', function () {
@@ -411,8 +448,7 @@ describe('SOQLBuilder::toSql() — binding representation', function () {
             ->toSql();
 
         expect($sql)->toContain("O\\'Brien");
-        // toSql() uses getBindings() directly; boolean true renders as 1 here
-        expect($sql)->toContain('= 1');
+        expect($sql)->toContain('= TRUE');
         expect($sql)->toContain('25');
     });
 });

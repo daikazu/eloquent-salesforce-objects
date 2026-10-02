@@ -7,6 +7,7 @@ Learn how to efficiently work with multiple Salesforce records using bulk insert
 - [Introduction](#introduction)
 - [Bulk Insert](#bulk-insert)
 - [Bulk Update](#bulk-update)
+- [Bulk Upsert](#bulk-upsert)
 - [Bulk Delete](#bulk-delete)
 - [Advanced Features](#advanced-features)
 - [Error Handling](#error-handling)
@@ -47,12 +48,23 @@ $contactsData = [
 ];
 
 // Insert all at once
-$contacts = Contact::insert($contactsData);
+$results = Contact::insert($contactsData);
 
-// Returns collection of created models with IDs
-foreach ($contacts as $contact) {
-    echo "Created contact: {$contact->Id}\n";
+// Returns a Collection with one save result per record, in input order
+foreach ($results as $result) {
+    if ($result['success']) {
+        echo "Created contact: {$result['id']}\n";
+    } else {
+        echo "Failed: {$result['errors'][0]['message']}\n";
+    }
 }
+```
+
+Each result is the save result Salesforce returns for that record:
+
+```php
+['id' => '003xx000004TmiQ', 'success' => true, 'errors' => []]
+['id' => null, 'success' => false, 'errors' => [['statusCode' => 'REQUIRED_FIELD_MISSING', 'message' => '...', 'fields' => ['LastName']]]]
 ```
 
 ### With Related Records
@@ -82,10 +94,20 @@ $contacts = Contact::insert($contactsData);
 
 Update multiple records efficiently.
 
+To give every matching record the same values, call `update()` on a query:
+
+```php
+$updated = Account::where('Industry', 'Technology')->update(['Rating' => 'Hot']); // number saved
+```
+
+To give each record its own values, use `SalesforceAdapter::bulkUpdate()`, which takes the Salesforce object name, an array of records (each must include `Id`), and an optional `allOrNone` flag.
+
+> **Note:** Like `insert()` and query `delete()`, `bulkUpdate()` sends larger lists in requests of up to 200 records (`bulk_operation_size`) and returns the merged per-record results. `allOrNone` applies to each request, not across requests: if a later request fails, earlier ones have already been saved.
+
 ### Basic Usage
 
 ```php
-use App\Models\Account;
+use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 
 $updates = [
     ['Id' => '001xx000001', 'Phone' => '555-0001', 'Industry' => 'Technology'],
@@ -93,7 +115,7 @@ $updates = [
     ['Id' => '001xx000003', 'Phone' => '555-0003', 'Industry' => 'Healthcare'],
 ];
 
-$accounts = Account::bulkUpdate($updates);
+$results = app(SalesforceAdapter::class)->bulkUpdate('Account', $updates);
 ```
 
 ### Update from Query Results
@@ -111,9 +133,25 @@ $updates = $accounts->map(function ($account) {
         'Status__c' => 'Premium',
         'Rating' => $account->AnnualRevenue > 5000000 ? 'Hot' : 'Warm',
     ];
-})->toArray();
+});
 
-Account::bulkUpdate($updates);
+// Any number of records; sent 200 per request
+$results = app(SalesforceAdapter::class)->bulkUpdate('Account', $updates->values()->all());
+```
+
+## Bulk Upsert
+
+`upsert()` creates or updates records matched on an External Id field, 200 per request, and returns how many saved:
+
+```php
+$saved = Account::upsert($rows, 'ERP_Id__c');
+```
+
+Every row needs a value for the External Id field. Salesforce updates every field you send, so the optional third argument must list all of them or be left out. For per-record results (including `created`), use the adapter:
+
+```php
+$results = app(SalesforceAdapter::class)->bulkUpsert('Account', 'ERP_Id__c', $rows);
+// [['id' => '001...', 'success' => true, 'created' => false, 'errors' => []], ...]
 ```
 
 ## Bulk Delete
@@ -175,7 +213,7 @@ Contact::insert($data, allOrNone: true);
 Account::query()->delete(allOrNone: true);
 
 // Update with rollback (via adapter)
-Account::bulkUpdate($updates, allOrNone: true);
+app(SalesforceAdapter::class)->bulkUpdate('Account', $updates, allOrNone: true);
 ```
 
 ### Automatic Chunking
@@ -194,8 +232,8 @@ for ($i = 0; $i < 1000; $i++) {
 }
 
 // Automatically chunked into 5 API calls (200 records each)
-$contacts = Contact::insert($largeDataset);
-echo "Created " . count($contacts) . " contacts";
+$results = Contact::insert($largeDataset);
+echo "Created " . $results->where('success', true)->count() . " contacts";
 ```
 
 **How chunking works:**
@@ -215,7 +253,7 @@ $totalCreated = 0;
 
 foreach ($chunks as $index => $chunk) {
     $results = Contact::insert($chunk);
-    $totalCreated += count($results);
+    $totalCreated += $results->where('success', true)->count();
 
     $progress = (($index + 1) / count($chunks)) * 100;
     echo "Progress: " . round($progress, 2) . "%\n";
@@ -254,7 +292,15 @@ $data = [
 $results = Contact::insert($data);
 
 // 2 records created successfully, 1 failed
-echo "Created " . count($results) . " out of " . count($data) . " contacts";
+$created = $results->where('success', true)->count();
+echo "Created {$created} out of " . count($data) . " contacts";
+
+// Inspect the failures (results are in input order)
+$results->reject(fn ($result) => $result['success'])
+    ->each(fn ($result, $index) => logger()->warning('Contact insert failed', [
+        'record' => $data[$index],
+        'errors' => $result['errors'],
+    ]));
 ```
 
 ### Catching Exceptions
@@ -280,12 +326,13 @@ try {
     $results = Contact::insert($data);
 
     // Check for partial failures
-    if (count($results) < count($data)) {
-        $failedCount = count($data) - count($results);
+    $failed = $results->where('success', false);
+
+    if ($failed->isNotEmpty()) {
         logger()->warning("Bulk insert partial failure", [
             'total' => count($data),
-            'successful' => count($results),
-            'failed' => $failedCount,
+            'successful' => count($data) - $failed->count(),
+            'failed' => $failed->count(),
         ]);
     }
 } catch (\Exception $e) {
@@ -417,7 +464,7 @@ public function importContacts($filename)
 
     foreach ($chunks as $index => $chunk) {
         $results = Contact::insert($chunk);
-        $totalCreated += count($results);
+        $totalCreated += $results->where('success', true)->count();
 
         // Update progress
         $progress = (($index + 1) / count($chunks)) * 100;
@@ -451,10 +498,14 @@ public function bulkUpdateAccounts(Request $request)
             'Industry' => $account['industry'] ?? null,
             'Phone' => $account['phone'] ?? null,
         ];
-    })->toArray();
+    });
 
     try {
-        $results = Account::bulkUpdate($updateData);
+        $adapter = app(SalesforceAdapter::class);
+
+        $results = $updateData->chunk(200)->flatMap(
+            fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all())
+        );
 
         return response()->json([
             'message' => 'Accounts updated successfully',

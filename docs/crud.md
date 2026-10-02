@@ -225,14 +225,50 @@ $account->save();
 $changes = $account->getChanges();
 ```
 
+### Update Matching Records
+
+`update()` on a query updates every matching record, 200 per API request, and returns how many saved. Like Laravel's query `update()`, it skips model events:
+
+```php
+$updated = Account::where('Industry', 'Tech')->update(['Rating' => 'Hot']);
+
+// Set a datetime field to now on the matching records
+Account::where('Rating', 'Hot')->touch('Last_Reviewed__c');
+```
+
+Values must be literal: `update(['Count__c' => DB::raw('Count__c + 1')])` throws, because Salesforce can't compute a field from its current value.
+
 ### Increment/Decrement
 
-Note: Salesforce doesn't support direct increment/decrement. You must read, modify, and save:
+Salesforce has no atomic increment. On a model, `increment()` / `decrement()` compute the new value and `save()` it, so it isn't atomic: a concurrent change to the same field can be overwritten.
 
 ```php
 $opportunity = Opportunity::find($id);
-$opportunity->Amount = $opportunity->Amount + 1000;
-$opportunity->save();
+
+$opportunity->increment('Amount', 1000);
+$opportunity->decrement('Probability', 5, ['StageName' => 'Negotiation']); // with extra fields
+$opportunity->incrementEach(['Amount' => 1000, 'TotalOpportunityQuantity' => 2]);
+```
+
+On a query (`Opportunity::where(...)->increment('Amount')`) they throw, since a read-then-write across many records could silently lose concurrent changes.
+
+### Upsert by External Id
+
+`upsert()` creates or updates records matched on an External Id field, 200 per API request, and returns how many saved:
+
+```php
+$saved = Account::upsert([
+    ['ERP_Id__c' => 'A-100', 'Name' => 'Acme', 'Industry' => 'Technology'],
+    ['ERP_Id__c' => 'A-101', 'Name' => 'Globex'],
+], 'ERP_Id__c');
+```
+
+Salesforce matches on exactly one External Id field and updates every field you send. So the third argument (`$update`) must be omitted or list every field; to update only some fields, send only those.
+
+### Create and Get the Id
+
+```php
+$id = Account::insertGetId(['Name' => 'Acme']); // '001...'
 ```
 
 ## Deleting Records
@@ -295,6 +331,28 @@ Account::where('Industry', 'Obsolete')->delete();
 
 ## Error Handling
 
+### Reading the error
+
+Failed API calls throw `Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException`. Queries throw it too; it isn't wrapped in Laravel's `QueryException`. The message says what failed and why, and two properties give you the details:
+
+```php
+use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
+
+try {
+    Account::create(['Industry' => 'Technology']);
+} catch (SalesforceException $e) {
+    $e->getMessage(); // "Create failed for Account: REQUIRED_FIELD_MISSING: Required fields are missing: [Name] (HTTP 400)"
+    $e->errorCode;    // "REQUIRED_FIELD_MISSING" (null when Salesforce didn't send one)
+    $e->statusCode;   // 400 (null when the request never got a response)
+
+    if ($e->errorCode === 'UNABLE_TO_LOCK_ROW') {
+        // retry later
+    }
+}
+```
+
+Invalid SOQL throws `MalformedQueryException`, a subclass of `SalesforceException`, so you can catch it on its own.
+
 ### Handling Create Errors
 
 ```php
@@ -345,7 +403,7 @@ Configure exception handling in `config/eloquent-salesforce-objects.php`:
 'throw_exceptions' => false,
 ```
 
-When `throw_exceptions` is false:
+When `throw_exceptions` is false, failures are logged instead. `save()`, `update()` and `delete()` return `false`, and `create()` returns a model that wasn't saved:
 
 ```php
 $account = Account::create([
@@ -353,7 +411,7 @@ $account = Account::create([
     'InvalidField' => 'value', // Invalid field
 ]);
 
-if ($account === false) {
+if (! $account->exists) {
     // Creation failed, check logs
     echo "Failed to create account";
 }

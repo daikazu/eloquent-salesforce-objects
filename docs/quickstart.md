@@ -313,8 +313,8 @@ $contactsData = [
     ['FirstName' => 'Bob', 'LastName' => 'Jones', 'Email' => 'bob@example.com'],
 ];
 
-$contacts = Contact::insert($contactsData);
-echo "Created " . count($contacts) . " contacts\n";
+$results = Contact::insert($contactsData);
+echo "Created " . $results->where('success', true)->count() . " contacts\n";
 ```
 
 ## Performance Tips

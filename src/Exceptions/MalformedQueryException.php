@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Exceptions;
 
-use Exception;
-
-class MalformedQueryException extends Exception {}
+/**
+ * Salesforce rejected the SOQL as invalid (error code MALFORMED_QUERY).
+ */
+class MalformedQueryException extends SalesforceException {}

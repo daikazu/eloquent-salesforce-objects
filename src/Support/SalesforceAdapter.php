@@ -11,8 +11,6 @@ use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
-use ReflectionClass;
-use ReflectionException;
 use Throwable;
 
 /**
@@ -54,11 +52,12 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::query($soql);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Query failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Query failed', $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
     }
 
     /**
@@ -71,11 +70,12 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::queryAll($soql);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('QueryAll failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('QueryAll failed', $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
     }
 
     /**
@@ -88,11 +88,36 @@ class SalesforceAdapter implements AdapterInterface
 
         try {
             $response = Forrest::next($nextRecordsUrl);
-
-            return $this->parser->parseQueryResponse($response);
+            $result = $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Next records query failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Next records query failed', $e);
         }
+
+        return $this->withAllNestedRecords($response, $result);
+    }
+
+    /**
+     * Fetch the remaining pages of any child relationship results that came back partly,
+     * so each parent row holds all of its children.
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    protected function withAllNestedRecords(mixed $response, array $result): array
+    {
+        foreach ($this->parser->nestedNextRecordsUrls($response) as $index => $relationships) {
+            foreach ($relationships as $field => $url) {
+                while ($url !== null) {
+                    $page = $this->next($url);
+
+                    array_push($result['records'][$index][$field], ...$page['records']);
+
+                    $url = $page['nextRecordsUrl'];
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -108,7 +133,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseQueryResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('Search failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('Search failed', $e);
         }
     }
 
@@ -131,7 +156,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseRecordResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Retrieve failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Retrieve failed for {$object} {$id}", $e);
         }
     }
 
@@ -151,7 +176,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseCreateResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Create failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Create failed for {$object}", $e);
         }
     }
 
@@ -171,7 +196,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return true;
         } catch (Throwable $e) {
-            throw new SalesforceException("Update failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Update failed for {$object} {$id}", $e);
         }
     }
 
@@ -190,7 +215,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return true;
         } catch (Throwable $e) {
-            throw new SalesforceException("Delete failed for {$object} {$id}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Delete failed for {$object} {$id}", $e);
         }
     }
 
@@ -210,7 +235,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseCreateResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException("Upsert failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Upsert failed for {$object}", $e);
         }
     }
 
@@ -228,47 +253,45 @@ class SalesforceAdapter implements AdapterInterface
      */
     public function bulkCreate(string $object, array $records, bool $allOrNone = false): array
     {
-        $this->ensureAuthenticated();
-
-        if ($records === []) {
-            return [];
-        }
-
-        // Salesforce limit is 200 records per request
-        if (count($records) > $this->bulkOperationSize) {
-            throw new SalesforceException("Bulk create is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
-        }
-
-        try {
-            $preparedRecords = array_map(
-                fn ($record): array => array_merge(['attributes' => ['type' => $object]], $record),
-                $records
-            );
-
-            return Forrest::post("{$this->apiVersion}/composite/sobjects", [
-                'body' => [
-                    'allOrNone' => $allOrNone,
-                    'records'   => $preparedRecords,
-                ],
-            ]);
-        } catch (Throwable $e) {
-            throw new SalesforceException("Bulk create failed for {$object}: " . $e->getMessage(), 0, $e);
-        }
+        return $this->compositeSave('post', 'create', $object, $records, $allOrNone);
     }
 
     /**
      * Bulk update multiple records using Salesforce Composite SObject Collections API
-     * Can handle up to 200 records per request
+     *
+     * Larger lists are sent in requests of up to 200 records (bulk_operation_size) and the
+     * per-record results merged. allOrNone applies to each request, not across requests.
      *
      * @param  string  $object  Salesforce object name
      * @param  array  $records  Array of record data arrays (must include 'Id' field)
-     * @param  bool  $allOrNone  If true, entire operation rolls back on any error
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
      * @return array Results with success/error info for each record
      *
      * @throws SalesforceException
      * @throws AuthenticationException
      */
     public function bulkUpdate(string $object, array $records, bool $allOrNone = false): array
+    {
+        $results = [];
+
+        foreach (array_chunk($records, $this->bulkOperationSize) as $chunk) {
+            $response = $this->compositeSave('patch', 'update', $object, $chunk, $allOrNone);
+
+            array_push($results, ...(array_is_list($response) ? $response : [$response]));
+        }
+
+        return $results;
+    }
+
+    /**
+     * Send records to the Composite SObject Collections API (create or update)
+     *
+     * @param  'post'|'patch'  $method
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    private function compositeSave(string $method, string $verb, string $object, array $records, bool $allOrNone, string $pathSuffix = ''): array
     {
         $this->ensureAuthenticated();
 
@@ -278,7 +301,7 @@ class SalesforceAdapter implements AdapterInterface
 
         // Salesforce limit is 200 records per request
         if (count($records) > $this->bulkOperationSize) {
-            throw new SalesforceException("Bulk update is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
+            throw new SalesforceException("Bulk {$verb} is limited to {$this->bulkOperationSize} records per request. Got " . count($records) . ' records.');
         }
 
         try {
@@ -287,15 +310,44 @@ class SalesforceAdapter implements AdapterInterface
                 $records
             );
 
-            return Forrest::patch("{$this->apiVersion}/composite/sobjects", [
+            return Forrest::{$method}("{$this->apiVersion}/composite/sobjects{$pathSuffix}", [
                 'body' => [
                     'allOrNone' => $allOrNone,
                     'records'   => $preparedRecords,
                 ],
             ]);
         } catch (Throwable $e) {
-            throw new SalesforceException("Bulk update failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Bulk {$verb} failed for {$object}", $e);
         }
+    }
+
+    /**
+     * Bulk upsert records by an External Id field, using the Composite SObject Collections API
+     *
+     * Each record must include a value for $externalIdField: Salesforce updates the record
+     * with that value, or creates one if none exists. Larger lists are sent 200 per request
+     * and the per-record results merged; allOrNone applies to each request.
+     *
+     * @param  string  $object  Salesforce object name
+     * @param  string  $externalIdField  An External Id field on the object (or "Id")
+     * @param  array  $records  Array of record data arrays
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
+     * @return array Results with id/success/created/errors for each record
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function bulkUpsert(string $object, string $externalIdField, array $records, bool $allOrNone = false): array
+    {
+        $results = [];
+
+        foreach (array_chunk($records, $this->bulkOperationSize) as $chunk) {
+            $response = $this->compositeSave('patch', 'upsert', $object, $chunk, $allOrNone, "/{$object}/{$externalIdField}");
+
+            array_push($results, ...(array_is_list($response) ? $response : [$response]));
+        }
+
+        return $results;
     }
 
     /**
@@ -328,7 +380,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return Forrest::delete("{$this->apiVersion}/composite/sobjects?ids={$idsParam}&allOrNone=" . ($allOrNone ? 'true' : 'false'));
         } catch (Throwable $e) {
-            throw new SalesforceException("Bulk delete failed for {$object}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Bulk delete failed for {$object}", $e);
         }
     }
 
@@ -345,7 +397,7 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseMetadataResponse($response);
         } catch (Throwable $e) {
-            throw new SalesforceException('DescribeGlobal failed: ' . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable('DescribeGlobal failed', $e);
         }
     }
 
@@ -384,8 +436,8 @@ class SalesforceAdapter implements AdapterInterface
 
             return $this->parser->parseMetadataResponse($response);
         } catch (Throwable $e) {
-            $message = in_array($objectName, [null, '', '0'], true) ? 'Describe failed: ' : "Describe failed for {$objectName}: ";
-            throw new SalesforceException($message . $e->getMessage(), 0, $e);
+            $context = in_array($objectName, [null, '', '0'], true) ? 'Describe failed' : "Describe failed for {$objectName}";
+            throw SalesforceException::fromThrowable($context, $e);
         }
     }
 
@@ -488,6 +540,31 @@ class SalesforceAdapter implements AdapterInterface
 
         // Remove duplicates and return
         return array_unique($resolvedColumns);
+    }
+
+    /**
+     * Get the child relationship name used in parent-to-child subqueries
+     *
+     * For example, Contact.AccountId on Account is "Contacts", and a custom lookup
+     * is usually "Something__r". Read from the parent's (cached) describe metadata.
+     *
+     * @param  string|object  $parent  Parent object name, SalesforceModel class string, or SalesforceModel instance
+     * @param  string  $childObject  Child object name, e.g. "Contact"
+     * @param  string  $field  The child's lookup field to the parent, e.g. "AccountId"
+     * @return string|null Null when the relationship doesn't exist or can't be queried
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function childRelationshipName(string | object $parent, string $childObject, string $field): ?string
+    {
+        foreach ($this->describe($parent)['childRelationships'] ?? [] as $relationship) {
+            if (($relationship['childSObject'] ?? null) === $childObject && ($relationship['field'] ?? null) === $field) {
+                return $relationship['relationshipName'] ?? null;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -640,7 +717,7 @@ class SalesforceAdapter implements AdapterInterface
             // Return the response as-is, or parse it if it's an array
             return is_array($response) ? $response : ['response' => $response];
         } catch (Throwable $e) {
-            throw new SalesforceException("Apex REST call failed for {$path}: " . $e->getMessage(), 0, $e);
+            throw SalesforceException::fromThrowable("Apex REST call failed for {$path}", $e);
         }
     }
 
@@ -688,37 +765,15 @@ class SalesforceAdapter implements AdapterInterface
     }
 
     /**
-     * Get table name from a model class without instantiation
+     * Get the Salesforce object name for a model class
      *
-     * Replicates the logic of Model::getTable() without creating an instance
+     * Instantiates the model so $table and any getTable() override are honoured.
      *
-     * @param  string  $class  Fully qualified class name
-     * @return string Table name
-     *
-     * @throws SalesforceException
+     * @param  class-string<SalesforceModel>  $class
      */
     protected function getTableNameFromClass(string $class): string
     {
-        try {
-            $reflection = new ReflectionClass($class);
-
-            // Check if class has a $table property defined
-            if ($reflection->hasProperty('table')) {
-                $property = $reflection->getProperty('table');
-                $defaultProperties = $reflection->getDefaultProperties();
-
-                // If table property has a default value, use it
-                if (isset($defaultProperties['table'])) {
-                    return $defaultProperties['table'];
-                }
-            }
-
-            // Fallback: use class basename (same logic as Model::getTable())
-            // Laravel's default: Str::snake(class_basename($class))
-            return class_basename($class);
-        } catch (ReflectionException $e) {
-            throw new SalesforceException("Unable to resolve table name for class {$class}: " . $e->getMessage(), 0, $e);
-        }
+        return (new $class)->getTable();
     }
 
     /**

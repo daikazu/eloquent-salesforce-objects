@@ -15,6 +15,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Eager Load Strategy
+    |--------------------------------------------------------------------------
+    |
+    | How with() loads hasMany / hasOne relationships.
+    |
+    | 'subquery': children come back nested in the parent query, e.g.
+    |             select Id, (select Id from Contacts) from Account
+    |             One API call, no list of parent Ids, and limit() applies per parent.
+    |             Relationships a subquery can't express fall back to 'query'.
+    | 'query':    one extra query per relationship: ... where AccountId in (...)
+    |             The Id list can exceed Salesforce's request size at a few hundred parents.
+    |
+    */
+    'eager_load_strategy' => env('SALESFORCE_EAGER_LOAD_STRATEGY', 'subquery'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Enable Query Log
     |--------------------------------------------------------------------------
     |

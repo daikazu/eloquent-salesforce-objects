@@ -6,12 +6,12 @@ namespace Daikazu\EloquentSalesforceObjects\Models;
 
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLBuilder;
+use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLHasMany;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLHasOne;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\DeletesSalesforceRecords;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\HasSalesforceMetadata;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\SavesSalesforceRecords;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
+use InvalidArgumentException;
+use ReflectionProperty;
 
 class SalesforceModel extends Model
 {
@@ -29,6 +31,8 @@ class SalesforceModel extends Model
     const string UPDATED_AT = 'LastModifiedDate';
     const string CREATED_AT = 'CreatedDate';
     const string DATED_FORMAT = 'Y-m-d\TH:i:s.vO';
+
+    private const int ELOQUENT_DEFAULT_PER_PAGE = 15;
 
     /**
      * The default columns to select when querying this model.
@@ -49,11 +53,6 @@ class SalesforceModel extends Model
 
     protected array $readOnly = [];
 
-    //    private array $readFields = [
-    //        'Id',
-    //        'attributes',
-    //    ];
-
     public function __construct(array $attributes = [])
     {
         parent::__construct($attributes);
@@ -64,13 +63,92 @@ class SalesforceModel extends Model
     }
 
     /**
-     * Get writable attributes excluding read-only fields todo: check if this is needed
+     * Get the attributes minus the $readOnly fields and any extra exclusions.
+     *
+     * save() does not use this; it filters by Salesforce's createable/updateable metadata.
      */
     public function writeableAttributes(array $exclude = []): array
     {
         $fields = array_merge($this->readOnly, $exclude);
 
         return Arr::except($this->attributes, $fields);
+    }
+
+    /**
+     * Salesforce has no insert-or-ignore (Laravel 13's saveOrIgnore()).
+     *
+     * @param  array<string, mixed>  $options
+     * @param  array<int, string>|string|null  $uniqueBy
+     */
+    public function saveOrIgnore(array $options = [], array | string | null $uniqueBy = null): never
+    {
+        throw new InvalidArgumentException(SOQLGrammar::INSERT_OR_IGNORE_UNSUPPORTED);
+    }
+
+    /**
+     * Salesforce has no atomic increment, so compute the new value and save it.
+     * Not atomic: a concurrent change to the same field can be overwritten.
+     *
+     * @param  string  $column
+     * @param  float|int  $amount
+     * @param  array<string, mixed>  $extra
+     * @param  string  $method
+     */
+    protected function incrementOrDecrement($column, $amount, $extra, $method): int | false
+    {
+        return $this->saveIncrementedValues([$column => $amount], $extra, $method === 'increment');
+    }
+
+    /**
+     * Public so a model's incrementEach() reaches here on every Laravel version: Laravel 12
+     * forwards it to the query builder (which throws), and 13 calls it through __call().
+     *
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    public function incrementEach(array $columns, array $extra = []): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, true);
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    public function decrementEach(array $columns, array $extra = []): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, false);
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    protected function incrementOrDecrementEach(array $columns, array $extra, string $method): int | false
+    {
+        return $this->saveIncrementedValues($columns, $extra, $method === 'incrementEach');
+    }
+
+    /**
+     * @param  array<string, float|int>  $columns
+     * @param  array<string, mixed>  $extra
+     */
+    private function saveIncrementedValues(array $columns, array $extra, bool $increment): int | false
+    {
+        if (! $this->exists) {
+            throw new InvalidArgumentException(
+                'Cannot increment a Salesforce record that has not been saved. '
+                . 'Load it first; query-level increment() is not supported because Salesforce has no atomic increment.'
+            );
+        }
+
+        foreach ($columns as $column => $amount) {
+            $this->{$column} = $this->{$column} + ($increment ? $amount : -$amount);
+        }
+
+        $this->forceFill($extra);
+
+        return $this->save() ? 1 : false;
     }
 
     /**
@@ -88,8 +166,7 @@ class SalesforceModel extends Model
      */
     public function newEloquentBuilder($query): SOQLBuilder
     {
-        $adapter = app(SalesforceAdapter::class);
-        return new SOQLBuilder($adapter, $query);
+        return new SOQLBuilder($this->getSalesforceAdapter(), $query);
     }
 
     /**
@@ -130,6 +207,23 @@ class SalesforceModel extends Model
     public function getDefaultColumns(): ?array
     {
         return $this->defaultColumns;
+    }
+
+    /**
+     * Get the number of models to return per page.
+     *
+     * A model that declares its own $perPage, or calls setPerPage(), keeps that value;
+     * otherwise the `default_page_size` config applies instead of Eloquent's default of 15.
+     */
+    public function getPerPage(): int
+    {
+        $declaredOnSubclass = (new ReflectionProperty($this, 'perPage'))->getDeclaringClass()->getName() !== Model::class;
+
+        if ($declaredOnSubclass || $this->perPage !== self::ELOQUENT_DEFAULT_PER_PAGE) {
+            return parent::getPerPage();
+        }
+
+        return (int) config('eloquent-salesforce-objects.default_page_size', 200);
     }
 
     /**

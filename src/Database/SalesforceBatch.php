@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Illuminate\Database\Eloquent\Builder;
 use stdClass;
 use Throwable;
@@ -15,7 +15,7 @@ final class SalesforceBatch
     /** @var array<string, array{type: string, query: string, model: ?string}> */
     private array $queries = [];
 
-    private readonly SalesforceAdapter $adapter;
+    private readonly AdapterInterface $adapter;
 
     private readonly int $batchSize;
 
@@ -23,7 +23,7 @@ final class SalesforceBatch
 
     private function __construct()
     {
-        $this->adapter = app(SalesforceAdapter::class);
+        $this->adapter = app(AdapterInterface::class);
         $this->batchSize = min((int) config('eloquent-salesforce-objects.batch_size', 25), 25);
         $this->apiVersion = config('forrest.version', 'v64.0');
     }

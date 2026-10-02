@@ -7,6 +7,7 @@ use Daikazu\EloquentSalesforceObjects\Examples\Contact;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\AccountWithExplicitTable;
+use Daikazu\EloquentSalesforceObjects\Tests\Unit\Fixtures\ModelWithTableOverride;
 use Mockery\Mock;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
@@ -174,6 +175,17 @@ describe('getTableNameFromClass (via describe())', function () {
         $result = $this->adapter->describe(AccountWithExplicitTable::class);
 
         expect($result['name'])->toBe('Account__c');
+    });
+
+    it('uses an overridden getTable() on the model', function () {
+        Forrest::shouldReceive('describe')
+            ->once()
+            ->with('Override__c')
+            ->andReturn(['name' => 'Override__c', 'fields' => []]);
+
+        $result = $this->adapter->describe(ModelWithTableOverride::class);
+
+        expect($result['name'])->toBe('Override__c');
     });
 });
 

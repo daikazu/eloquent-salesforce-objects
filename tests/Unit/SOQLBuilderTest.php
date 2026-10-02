@@ -411,10 +411,8 @@ describe('where clauses', function () {
 
         $query = Account::whereBetween('AnnualRevenue', [1000000, 5000000])->toSql();
 
-        // Laravel generates "between X and Y" syntax
-        expect($query)->toContain('between');
-        expect($query)->toContain('1000000');
-        expect($query)->toContain('5000000');
+        // SOQL has no BETWEEN, so it compiles to a pair of comparisons
+        expect($query)->toContain('where (AnnualRevenue >= 1000000 and AnnualRevenue <= 5000000)');
     });
 
     it('supports where with operators', function () {
@@ -728,24 +726,12 @@ describe('from method', function () {
 });
 
 describe('whereTime method', function () {
-    it('delegates to where method', function () {
+    it('throws, because SOQL has no time-of-day comparison', function (string $method) {
         Forrest::shouldReceive('hasToken')->andReturn(true);
 
-        Forrest::shouldReceive('describe')->andReturn([
-            'fields' => [
-                ['name' => 'Id'],
-                ['name' => 'Name'],
-                ['name' => 'CreatedDate'],
-                ['name' => 'LastModifiedDate'],
-                ['name' => 'IsDeleted'],
-            ],
-        ]);
-
-        $sql = Account::whereTime('CreatedDate', '>', '2024-01-01')->toSql();
-
-        expect($sql)->toContain('CreatedDate >');
-        expect($sql)->toContain('2024-01-01');
-    });
+        expect(fn () => Account::select(['Id'])->where('Name', 'x')->{$method}('CreatedDate', '>', '10:00')->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL has no time-of-day comparison');
+    })->with(['whereTime', 'orWhereTime']);
 });
 
 describe('describe method', function () {

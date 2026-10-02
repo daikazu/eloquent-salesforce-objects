@@ -9,11 +9,22 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 use Throwable;
 
 class AuthenticationManager
 {
+    /**
+     * Forrest's authentication flow that calls SOAP API login() instead of OAuth.
+     */
+    public const string SOAP_LOGIN_FLOW = 'UserPasswordSoap';
+
+    public const string SOAP_LOGIN_WARNING = 'Salesforce authentication is using SOAP API login() (forrest.authentication = "UserPasswordSoap"). '
+        . 'Salesforce is retiring SOAP API login() in API versions 31.0-64.0 with the Summer \'27 release, it is disabled by default in orgs '
+        . 'created in Summer \'26 or later, and from Winter \'27 it requires the "Use Any API Auth" user permission. '
+        . 'Switch forrest.authentication to an OAuth flow such as ClientCredentials or OAuthJWT.';
+
     /**
      * Ensure valid Salesforce authentication exists.
      *
@@ -98,6 +109,8 @@ class AuthenticationManager
      */
     protected function performAuthentication(): void
     {
+        $this->warnIfUsingSoapLogin();
+
         $maxAttempts = max(1, $this->retryAttempts());
         $baseDelayMs = max(0, $this->retryBaseDelayMs());
 
@@ -123,6 +136,36 @@ class AuthenticationManager
             'Failed to authenticate with Salesforce: ' . $lastException->getMessage(),
             $lastException
         );
+    }
+
+    /**
+     * Whether Forrest is configured to authenticate with SOAP API login()
+     * rather than an OAuth flow.
+     */
+    public function usesSoapLogin(): bool
+    {
+        return config('forrest.authentication') === self::SOAP_LOGIN_FLOW;
+    }
+
+    /**
+     * Log a warning when authenticating with SOAP API login(), which Salesforce is retiring.
+     * Honours the package's logging_channel setting (false disables logging).
+     */
+    protected function warnIfUsingSoapLogin(): void
+    {
+        if (! $this->usesSoapLogin()) {
+            return;
+        }
+
+        $channel = config('eloquent-salesforce-objects.logging_channel');
+
+        if ($channel === false) {
+            return;
+        }
+
+        $logger = $channel ? Log::channel($channel) : Log::getFacadeRoot();
+
+        $logger->warning(self::SOAP_LOGIN_WARNING);
     }
 
     /**

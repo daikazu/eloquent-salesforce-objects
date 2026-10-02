@@ -12,6 +12,28 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 ## Authentication Issues
 
+### "SOAP API login()" Warning or `INSUFFICIENT_ACCESS` on Login
+
+**Problem:** The log shows `Salesforce authentication is using SOAP API login()`, `php artisan salesforce:test` prints the same warning, or authentication fails with `INSUFFICIENT_ACCESS`.
+
+**Cause:** `forrest.authentication` is set to `UserPasswordSoap`, which authenticates with SOAP API `login()` instead of OAuth. Salesforce is retiring `login()` in API versions 31.0 through 64.0 with Summer '27, disables it by default in orgs created in Summer '26 or later, and from Winter '27 rejects it with `INSUFFICIENT_ACCESS` unless the user has the **Use Any API Auth** permission.
+
+**Solution:** Switch to an OAuth flow, preferably Client Credentials:
+
+```env
+SF_AUTH_METHOD=ClientCredentials
+SF_CONSUMER_KEY=your_consumer_key
+SF_CONSUMER_SECRET=your_consumer_secret
+SF_LOGIN_URL=https://your-domain.my.salesforce.com
+```
+
+Enable the Client Credentials flow on your External Client App (or Connected App) and assign it a "Run As" user, then clear cached tokens and re-test:
+
+```bash
+php artisan cache:clear
+php artisan salesforce:test
+```
+
 ### "Authentication Failed" Error
 
 **Problem:** Unable to authenticate with Salesforce.
@@ -161,8 +183,10 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 3. **Check if field exists:**
    ```php
-   $fields = Account::describe();
-   dump($fields); // See all available fields
+   $fieldNames = array_column(Account::describe()['fields'], 'name');
+   dump($fieldNames); // See all available fields
+
+   Account::fieldMetadata('Custom_Field__c'); // null if the field doesn't exist
    ```
 
 ### "SOQL Syntax Error"
@@ -177,13 +201,13 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
    echo $soql; // View generated SOQL
    ```
 
-2. **Check for special characters:**
+2. **Don't escape values yourself:**
    ```php
-   // Wrong
-   ->where('Name', "Company's Name") // Unescaped quote
+   // Correct: bindings are escaped for you (quotes, backslashes, newlines)
+   ->where('Name', "Company's Name")
 
-   // Correct
-   ->where('Name', "Company\'s Name") // Escaped quote
+   // Wrong: the backslash is escaped too, so this searches for "Company\'s Name"
+   ->where('Name', "Company\'s Name")
    ```
 
 3. **Use proper operators:**
@@ -432,6 +456,8 @@ If you're still experiencing issues:
    - Steps to reproduce
 
 ## Common Error Messages Reference
+
+The error code is in the exception message and in `$e->errorCode` (see [Reading the error](crud.md#reading-the-error)). An error with no code, like `HTTP 414 Request-URI Too Large`, means the request never reached Salesforce's API. A 414 means the query was too long to send in the URL: select fewer columns, or filter on fewer values.
 
 | Error | Cause | Solution |
 |-------|-------|----------|

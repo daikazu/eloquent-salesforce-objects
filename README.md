@@ -1,6 +1,5 @@
 <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="art/header-dark.png">
-   <img alt="Logo for Eloquent Salesforce Objects" src="art/header-light.png">
+   <img alt="Logo for Eloquent Salesforce Objects" src="art/header.png">
 </picture>
 
 # Eloquent Salesforce Objects
@@ -22,7 +21,7 @@ This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce]
 - **CRUD Operations** - Create, read, update, and delete Salesforce records
 - **Relationships** - `hasMany`, `belongsTo`, and `hasOne`
 - **Batch Queries** - Execute multiple SOQL queries in a single API call
-- **Bulk Operations** - Efficient bulk insert, update, and delete
+- **Bulk Operations** - Efficient bulk insert, update, upsert by External Id, and delete
 - **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX
 - **Pagination** - Built-in pagination with Laravel's paginator
 - **Apex REST** - Call custom Apex REST endpoints
@@ -40,7 +39,7 @@ This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce]
 composer require daikazu/eloquent-salesforce-objects
 ```
 
-Configure [omniphx/forrest](https://github.com/omniphx/forrest) with your Salesforce credentials, then scaffold a model:
+Configure [omniphx/forrest](https://github.com/omniphx/forrest) with your Salesforce credentials using an OAuth flow such as `ClientCredentials` (avoid `UserPasswordSoap`, which relies on the SOAP API `login()` call Salesforce is retiring; see [Installation](docs/installation.md#choose-an-oauth-authentication-flow)), then scaffold a model:
 
 ```bash
 php artisan make:salesforce-model Account
@@ -107,7 +106,25 @@ See the [Quickstart Guide](docs/quickstart.md) for a full walkthrough.
 
 - [Configuration Reference](docs/configuration.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Upgrading from 1.x to 2.0](docs/upgrading.md)
 - [Migrating from EloquentSalesForce](docs/migration-from-eloquent-salesforce.md)
+
+## AI Agent Skills (Laravel Boost)
+
+The package ships two [Laravel Boost](https://laravel.com/docs/boost) skills that teach AI coding agents (Claude Code, Cursor, Codex, etc.) how to use it correctly:
+
+| Skill | Use it for |
+|-------|------------|
+| `eloquent-salesforce-objects-development` | Defining models, querying, CRUD, bulk and batch operations, metadata, Apex REST, and testing against Salesforce |
+| `migrating-from-eloquent-salesforce` | Moving an app from [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce) to this package |
+
+If your app uses Boost, the skills are offered automatically when you run:
+
+```bash
+php artisan boost:install
+# or, if Boost is already installed
+php artisan boost:update --discover
+```
 
 ## Testing
 
