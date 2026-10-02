@@ -157,7 +157,7 @@ class Account extends SalesforceModel
     protected $table = 'Account';
 
     // Default columns fetched in queries
-    protected array $defaultColumns = [
+    protected ?array $defaultColumns = [
         'Id',
         'Name',
         'Industry',
@@ -177,6 +177,8 @@ $accounts = Account::select(['Id', 'Name', 'Phone'])->get();
 ```
 
 This is useful for optimizing queries when you have objects with many fields.
+
+> **Note:** Declare the property as `protected ?array $defaultColumns`, matching the parent class. PHP property types are invariant, so declaring it as `protected array` causes a fatal error. `Id`, `CreatedDate`, `LastModifiedDate` and `IsDeleted` are always added automatically, so you don't need to list them. Leave it `null` (the default) to select every field on the object.
 
 ## Timestamps
 
@@ -471,7 +473,7 @@ protected $guarded = [];
 For objects with many fields, define default columns:
 
 ```php
-protected array $defaultColumns = [
+protected ?array $defaultColumns = [
     'Id',
     'Name',
     'Industry',
@@ -565,7 +567,7 @@ class Account extends SalesforceModel
         'BillingCountry',
     ];
 
-    protected array $defaultColumns = [
+    protected ?array $defaultColumns = [
         'Id',
         'Name',
         'Industry',
