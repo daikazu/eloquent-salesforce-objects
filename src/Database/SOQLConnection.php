@@ -9,11 +9,13 @@ use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\LogsSalesforceErrors;
+use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use Exception;
 use Generator;
 use Illuminate\Database\Connection;
-use Illuminate\Support\Str;
+use InvalidArgumentException;
 use stdClass;
 
 class SOQLConnection extends Connection
@@ -177,8 +179,7 @@ class SOQLConnection extends Connection
 
             // Transform DateTimeInterface instances to SOQL date format
             if ($value instanceof DateTimeInterface) {
-                $grammar ??= $this->getQueryGrammar();
-                $bindings[$key] = $value->format($grammar->getDateFormat());
+                $bindings[$key] = $this->formatDatetime($value);
                 continue;
             }
 
@@ -248,10 +249,61 @@ class SOQLConnection extends Connection
      */
     public function substituteBindings(string $query, array $bindings): string
     {
-        // SOQL's null literal, e.g. whereIn('Name', ['a', null]) -> Name in ('a', null)
-        $bindings = array_map(fn ($value) => $value ?? 'null', $this->prepareBindings($bindings));
+        $bindings = array_values($bindings);
+        $index = 0;
 
-        return Str::replaceArray('?', $bindings, $query);
+        // "?:date" / "?:datetime" are SOQLGrammar's typed placeholders for date fields
+        return (string) preg_replace_callback('/\?(?::(date|datetime)\b)?/', function (array $match) use (&$index, $bindings): string {
+            if (! array_key_exists($index, $bindings)) {
+                return $match[0];
+            }
+
+            $value = $bindings[$index++];
+
+            return isset($match[1])
+                ? $this->formatTemporal($value, $match[1])
+                : $this->formatBinding($value);
+        }, $query);
+    }
+
+    private function formatBinding(mixed $value): string
+    {
+        // SOQL's null literal, e.g. whereIn('Name', ['a', null]) -> Name in ('a', null)
+        return $value === null ? 'null' : (string) $this->prepareBindings([$value])[0];
+    }
+
+    /**
+     * Format a value for a date or datetime field as an unquoted SOQL literal.
+     */
+    private function formatTemporal(mixed $value, string $type): string
+    {
+        if ($value instanceof DateTimeInterface) {
+            // A date field holds a calendar date, so keep the value's own day
+            return $type === 'date' ? $value->format('Y-m-d') : $this->formatDatetime($value);
+        }
+
+        $value = (string) $value;
+
+        if (preg_match(SOQLGrammar::DATE_PATTERN, $value) === 1) {
+            return $type === 'date' ? $value : "{$value}T00:00:00Z";
+        }
+
+        if ($type === 'datetime' && preg_match(SOQLGrammar::DATETIME_PATTERN, $value) === 1) {
+            return $value;
+        }
+
+        // The grammar only types values that match, so this is a programming error
+        throw new InvalidArgumentException("Not a valid SOQL {$type} value: {$value}");
+    }
+
+    /**
+     * SOQL datetimes are UTC: convert first, so a value in another timezone isn't shifted.
+     */
+    private function formatDatetime(DateTimeInterface $value): string
+    {
+        return DateTimeImmutable::createFromInterface($value)
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format($this->getQueryGrammar()->getDateFormat());
     }
 
     /**

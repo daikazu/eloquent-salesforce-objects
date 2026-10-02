@@ -21,6 +21,11 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Fixed
 
+- **Date and datetime filters work.** The grammar decided which fields were dates using Laravel's `getDates()`, which is always empty because `SalesforceModel` turns timestamps off. Values are now formatted by the field's type from describe metadata (looked up only for values that can be dates):
+    - `date` fields (`CloseDate`): strings and Carbon both go out as `2025-01-01`. Before, strings were quoted and Carbon values were sent as datetimes, and Salesforce rejected both.
+    - `datetime` fields (`CreatedDate`): Carbon is converted to UTC first (before, a non-UTC Carbon was off by its offset), and a date-only string means midnight UTC.
+    - `whereDate()` on a datetime field compiles to `DAY_ONLY(Field)`. Before, Salesforce rejected it. It also no longer puts arbitrary strings into the query unquoted; only strict `YYYY-MM-DD` values.
+    - `whereYear()` / `whereMonth()` / `whereDay()` compile to `CALENDAR_YEAR()` / `CALENDAR_MONTH()` / `DAY_IN_MONTH()` instead of SQL's `year()` etc.
 - **Builder methods that produced SQL-only syntax now produce valid SOQL, or throw a clear error:**
     - `whereIn()`/`whereNotIn()` with `null` in the list sent a raw `?`; they now send `null`.
     - An empty `whereNotIn()` (and an empty `whereIntegerInRaw()`/`whereIntegerNotInRaw()`) sent `1 = 1` / `0 = 1`; they now send `Id != null` / `Id = null`.

@@ -106,7 +106,7 @@ $opportunities = Opportunity::whereBetween('Amount', [10000, 50000])->get();
 // whereNotBetween compiles to (Amount < 10000 or Amount > 50000)
 $outliers = Opportunity::whereNotBetween('Amount', [10000, 50000])->get();
 
-// Datetime fields: pass Carbon instances, not date strings
+// Dates work on date and datetime fields (see Date Queries below)
 $accounts = Account::whereBetween('CreatedDate', [
     now()->startOfYear(),
     now()->endOfYear(),
@@ -117,18 +117,44 @@ $accounts = Account::whereBetween('CreatedDate', [
 
 ### Date Queries
 
-```php
-// WHERE CreatedDate >= DATE
-$accounts = Account::whereDate('CreatedDate', '>=', '2024-01-01')->get();
+SOQL takes date values unquoted, in a different format for `date` fields (`CloseDate`) and `datetime` fields (`CreatedDate`). The package looks up each field's type in Salesforce's metadata and formats the value to match, so `where()`, `whereBetween()` and `whereIn()` accept Carbon instances or date strings on either kind of field:
 
-// WHERE CreatedDate = SPECIFIC DATE
+```php
+// Date field: sent as CloseDate >= 2025-01-01
+Opportunity::where('CloseDate', '>=', '2025-01-01')->get();
+Opportunity::whereBetween('CloseDate', [now()->startOfQuarter(), now()->endOfQuarter()])->get();
+
+// Datetime field: Carbon is converted to UTC (CreatedDate >= 2025-01-01T05:00:00Z
+// for midnight in New York); a date-only string means midnight UTC
+Account::where('CreatedDate', '>=', now()->subDays(30))->get();
+Account::where('CreatedDate', '>=', '2025-01-01')->get();
+```
+
+`whereDate()` compares the date part only. On a datetime field it uses SOQL's `DAY_ONLY()`, which takes the day in UTC:
+
+```php
+// WHERE DAY_ONLY(CreatedDate) = 2024-01-15
 $accounts = Account::whereDate('CreatedDate', '2024-01-15')->get();
 
-// Using Carbon
 $accounts = Account::whereDate('CreatedDate', '>=', now()->subDays(30))->get();
 ```
 
-##Ordering Results
+`whereYear()`, `whereMonth()` and `whereDay()` compile to SOQL's `CALENDAR_YEAR()`, `CALENDAR_MONTH()` and `DAY_IN_MONTH()`:
+
+```php
+// WHERE CALENDAR_YEAR(CloseDate) = 2025 and CALENDAR_MONTH(CloseDate) = 03
+Opportunity::whereYear('CloseDate', 2025)->whereMonth('CloseDate', 3)->get();
+```
+
+SOQL date literals such as `TODAY`, `LAST_N_DAYS:30` and `THIS_FISCAL_QUARTER` pass through unquoted:
+
+```php
+Opportunity::where('CloseDate', '>', 'LAST_N_DAYS:30')->get();
+```
+
+Strings are only sent unquoted when they're exactly a date (`2025-01-31`) or datetime (`2025-01-31T10:00:00Z`). Anything else is quoted and escaped like any other value. Fields on a related object (`Account.CreatedDate`) aren't looked up, so pass those as Carbon instances.
+
+## Ordering Results
 
 ### Order By
 

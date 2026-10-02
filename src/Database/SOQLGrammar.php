@@ -5,14 +5,25 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Database;
 
 use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
+use DateTimeInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\Grammar;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Throwable;
 
 class SOQLGrammar extends Grammar
 {
     protected ?SalesforceModel $model = null;
+
+    /** A SOQL date literal: 2025-01-31 */
+    public const string DATE_PATTERN = '/^\d{4}-\d{2}-\d{2}$/';
+
+    /** A SOQL datetime literal: 2025-01-31T10:00:00Z, 2025-01-31T10:00:00.000+0000 */
+    public const string DATETIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:?\d{2})$/';
+
+    /** @var array<string, array<string, string>> */
+    private array $fieldTypes = [];
 
     /**
      * The components that make up a select clause.
@@ -62,10 +73,6 @@ class SOQLGrammar extends Grammar
      */
     protected function whereBasic(Builder $query, $where): string
     {
-        if ($this->isDate($where['column'])) {
-            return $this->whereDate($query, $where);
-        }
-
         // allow for "false" values to not be wrapped.
         if (is_bool($where['value'])) {
             return $this->whereBoolean($where);
@@ -85,22 +92,125 @@ class SOQLGrammar extends Grammar
             );
         }
 
-        return parent::whereBasic($query, $where);
+        $operator = str_replace('?', '??', (string) $where['operator']);
+
+        return $this->wrap($where['column']) . ' ' . $operator . ' ' . $this->typedParameter($query, $where['column'], $where['value']);
     }
 
+    /**
+     * A placeholder for a value compared with a column. Date and datetime fields get a typed
+     * placeholder ("?:date" / "?:datetime"), which SOQLConnection::substituteBindings() fills
+     * with an unquoted literal in that field's format. Anything else is a normal parameter.
+     */
+    protected function typedParameter(Builder $query, mixed $column, mixed $value): string
+    {
+        $type = $this->temporalTypeFor($query, $column, $value);
+
+        return $type === null ? $this->parameter($value) : "?:{$type}";
+    }
+
+    /**
+     * "date" or "datetime" when $value is a date for that kind of field, otherwise null.
+     *
+     * Only values that can be dates trigger a describe lookup, and strings must match a
+     * date/datetime format exactly, because they're sent unquoted.
+     */
+    private function temporalTypeFor(Builder $query, mixed $column, mixed $value): ?string
+    {
+        $isDateString = is_string($value) && preg_match(self::DATE_PATTERN, $value) === 1;
+        $isDatetimeString = is_string($value) && preg_match(self::DATETIME_PATTERN, $value) === 1;
+
+        if (! ($value instanceof DateTimeInterface || $isDateString || $isDatetimeString)
+            || ! is_string($column) || str_contains($column, '.') || ! is_string($query->from)) {
+            return null;
+        }
+
+        return match ($this->fieldTypes($query->from)[$column] ?? null) {
+            'date'     => $value instanceof DateTimeInterface || $isDateString ? 'date' : null,
+            'datetime' => 'datetime',
+            default    => null,
+        };
+    }
+
+    /**
+     * Field name => describe type for an object, looked up once per grammar (one per builder).
+     * A failed describe means no types, so values fall back to normal parameters.
+     *
+     * @return array<string, string>
+     */
+    private function fieldTypes(string $object): array
+    {
+        if (! array_key_exists($object, $this->fieldTypes)) {
+            $types = [];
+
+            try {
+                if ($this->connection instanceof SOQLConnection) {
+                    foreach ($this->connection->getAdapter()->describe($object)['fields'] ?? [] as $field) {
+                        if (isset($field['name'], $field['type'])) {
+                            $types[$field['name']] = $field['type'];
+                        }
+                    }
+                }
+            } catch (Throwable) {
+                $types = [];
+            }
+
+            $this->fieldTypes[$object] = $types;
+        }
+
+        return $this->fieldTypes[$object];
+    }
+
+    /**
+     * Compare the date part of a field. A datetime field needs DAY_ONLY() (the day in UTC);
+     * a date field compares directly. Only a strict YYYY-MM-DD value goes in unquoted.
+     */
     protected function whereDate(Builder $query, $where): string
     {
-        return $this->wrap($where['column']) . $where['operator'] . '?';
+        $column = $this->wrap($where['column']);
+
+        if (is_string($where['column']) && is_string($query->from)
+            && ($this->fieldTypes($query->from)[$where['column']] ?? null) === 'datetime') {
+            $column = "DAY_ONLY({$column})";
+        }
+
+        $value = is_string($where['value']) && preg_match(self::DATE_PATTERN, $where['value']) === 1
+            ? '?:date'
+            : $this->parameter($where['value']);
+
+        return "{$column} {$where['operator']} {$value}";
+    }
+
+    protected function whereYear(Builder $query, $where): string
+    {
+        return $this->datePartWhere('CALENDAR_YEAR', $where);
+    }
+
+    protected function whereMonth(Builder $query, $where): string
+    {
+        return $this->datePartWhere('CALENDAR_MONTH', $where);
+    }
+
+    protected function whereDay(Builder $query, $where): string
+    {
+        return $this->datePartWhere('DAY_IN_MONTH', $where);
+    }
+
+    /**
+     * SOQL date functions take an unquoted number; anything else is quoted (and rejected by Salesforce).
+     */
+    private function datePartWhere(string $function, array $where): string
+    {
+        $value = is_int($where['value']) || (is_string($where['value']) && ctype_digit($where['value']))
+            ? '?'
+            : $this->parameter($where['value']);
+
+        return "{$function}({$this->wrap($where['column'])}) {$where['operator']} {$value}";
     }
 
     protected function compileLimit(Builder $query, $limit): string
     {
         return 'limit ' . (int) $limit;
-    }
-
-    protected function isDate($column): bool
-    {
-        return $this->model !== null && in_array($column, $this->model->getDates());
     }
 
     public function parameter($value, $column = null): string
@@ -124,7 +234,7 @@ class SOQLGrammar extends Grammar
     protected function whereIn(Builder $query, $where): string
     {
         if (! empty($where['values'])) {
-            return $this->wrap($where['column']) . ' in (' . $this->parameterize($where['values']) . ')';
+            return $this->wrap($where['column']) . ' in (' . $this->typedParameters($query, $where) . ')';
         }
 
         return 'Id = null';
@@ -136,10 +246,18 @@ class SOQLGrammar extends Grammar
     protected function whereNotIn(Builder $query, $where): string
     {
         if (! empty($where['values'])) {
-            return $this->wrap($where['column']) . ' not in (' . $this->parameterize($where['values']) . ')';
+            return $this->wrap($where['column']) . ' not in (' . $this->typedParameters($query, $where) . ')';
         }
 
         return 'Id != null';
+    }
+
+    private function typedParameters(Builder $query, array $where): string
+    {
+        return implode(', ', array_map(
+            fn (mixed $value): string => $this->typedParameter($query, $where['column'], $value),
+            array_values($where['values'])
+        ));
     }
 
     protected function whereInRaw(Builder $query, $where): string
@@ -160,10 +278,8 @@ class SOQLGrammar extends Grammar
         $values = array_values(is_array($where['values']) ? $where['values'] : iterator_to_array($where['values']));
         $column = $this->wrap($where['column']);
 
-        // Date columns take unquoted literals, as in whereBasic()
-        [$min, $max] = $this->isDate($where['column'])
-            ? ['?', '?']
-            : [$this->parameter($values[0]), $this->parameter($values[count($values) - 1])];
+        $min = $this->typedParameter($query, $where['column'], $values[0]);
+        $max = $this->typedParameter($query, $where['column'], $values[count($values) - 1]);
 
         return $where['not']
             ? "({$column} < {$min} or {$column} > {$max})"

@@ -90,9 +90,10 @@ Opportunity::where('Amount', '>', 10000)
     ->get();
 
 Lead::where('Email', 'like', '%@example.com')->get();
-Lead::where('CreatedDate', '>=', now()->subDays(7))->get(); // DateTime field: pass Carbon
-Opportunity::whereDate('CloseDate', '>=', today())->get();   // Date field: use whereDate()
-Lead::whereRaw('CALENDAR_YEAR(CreatedDate) = 2025')->get();  // SOQL functions
+Lead::where('CreatedDate', '>=', now()->subDays(7))->get();    // datetime: Carbon (converted to UTC) or '2025-01-01'
+Opportunity::where('CloseDate', '>=', '2025-01-01')->get();     // date: string or Carbon, sent as 2025-01-01
+Lead::whereDate('CreatedDate', today())->get();                 // DAY_ONLY(CreatedDate) = ..., the day in UTC
+Lead::whereYear('CreatedDate', 2025)->get();                    // CALENDAR_YEAR(CreatedDate) = 2025
 
 Lead::select(['Id', 'Email'])->get();  // explicit columns
 Lead::allColumns()->get();             // ignore $defaultColumns, select every field
@@ -102,7 +103,7 @@ Opportunity::sum('Amount');            // also avg/average, min, max
 Lead::where('Email', $email)->exists();
 ```
 
-- Use `whereDate()` for Salesforce `date` fields and plain `where()` with Carbon for `datetime` fields. SOQL rejects quoted date literals.
+- Date and datetime values are formatted by the field's type from describe metadata, unquoted. Only strings that are exactly `YYYY-MM-DD` or an ISO datetime are sent unquoted; parent fields (`Account.CreatedDate`) aren't looked up, so pass Carbon there.
 - `whereNull('X')` compiles to `X = null`, which is valid SOQL.
 - `chunk()` and `cursor()` work for large result sets.
 - `toSql()` returns the SOQL that would be sent, with bindings escaped the same way. To see queries that actually ran, read `app(SalesforceAdapter::class)->queryHistory()`.
