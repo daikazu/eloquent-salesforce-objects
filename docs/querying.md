@@ -297,8 +297,10 @@ $result = $adapter->query('
 foreach ($result['records'] as $record) {
     echo $record['Name'] . "\n";
 
+    // A child subquery comes back as a plain list of rows (null when there are none).
+    // Every page is fetched, so the list is complete.
     if (isset($record['Contacts'])) {
-        foreach ($record['Contacts']['records'] as $contact) {
+        foreach ($record['Contacts'] as $contact) {
             echo "  - {$contact['FirstName']} {$contact['LastName']}\n";
         }
     }
@@ -308,7 +310,7 @@ foreach ($result['records'] as $record) {
 ### When to Use Raw Queries
 
 Use raw SOQL when you need:
-- Subqueries (child relationships)
+- Child subqueries outside a model relationship (for model relationships, `with()` already uses a subquery; see [Eager Loading](relationships.md#eager-loading))
 - Complex GROUP BY clauses
 - SOQL-specific functions (CALENDAR_YEAR, FORMAT, etc.)
 - Relationship queries not yet supported by the builder

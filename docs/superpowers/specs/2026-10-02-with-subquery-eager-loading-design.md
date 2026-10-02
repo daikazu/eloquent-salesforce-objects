@@ -87,6 +87,8 @@ After `parent::getModels()` returns, for each subquery relation on each parent m
 
 ## Phases
 
+**Status (2026-10-02):** phases 0, 1, 2 and 4 are done. Phase 3 (`belongsTo`) is deferred. Splitting long IN lists on the fallback path, and the `Query failed: null` error message, are open follow-ups.
+
 | Phase | Scope | Size |
 |---|---|---|
 | 0 | Characterization tests for today's `with()`: hasMany, hasOne, belongsTo, constraints, nested. There are **none** today. Also measure the IN-list ceiling against a sandbox; if `with()` already fails at N parents, log it as a bug | Small |

@@ -199,6 +199,39 @@ if ($primaryContact) {
 
 Load relationships upfront to avoid N+1 query problems.
 
+### How it works
+
+`hasMany` and `hasOne` relationships load through a SOQL child subquery, in the **same API call** as the parents:
+
+```php
+Account::with('contacts')->get();
+// select Id, Name, ..., (select Id, LastName, ... from Contacts) from Account
+```
+
+- The subquery name (`Contacts`, `Line_Items__r`, …) comes from Salesforce's describe metadata, so custom objects work without configuration.
+- `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery. `limit()` applies **per parent**: `limit(3)` gives each account up to 3 contacts.
+- A `hasOne` fetches one child per parent.
+- If Salesforce returns a parent's children in several pages, every page is fetched.
+- Up to 20 relationships per query load this way, which is the most child subqueries Salesforce allows in one query. Any beyond that use a separate query.
+
+`belongsTo` relationships, and `hasMany`/`hasOne` that a subquery can't express, use one extra query per relationship instead:
+
+```php
+Contact::with('account')->get();
+// select ... from Contact
+// select ... from Account where Id in ('001...', '001...', ...)
+```
+
+That happens when:
+- the closure uses `offset()`, grouping or `distinct()`
+- the relationship isn't one of the parent's child relationships in Salesforce
+- the local key isn't `Id`
+- `eager_load_strategy` is set to `query` in the config
+
+That extra query lists every parent Id. Against a real org it failed at around 600 parents because the request was too large, so load very large result sets in chunks (`chunk()`, `paginate()`). On this path, `limit()` in a `hasMany`/`hasOne` closure throws an `InvalidArgumentException`, because SOQL has no per-parent limit outside a subquery; trim the loaded collection instead.
+
+Nested relationships (`with('opportunities.lineItems')`) load the first level through the subquery and each deeper level with one more query.
+
 ### Basic Eager Loading
 
 ```php
@@ -252,6 +285,11 @@ $accounts = Account::with([
         $query->where('Email', '!=', null)
               ->orderBy('FirstName');
     }
+])->get();
+
+// The 3 most recent opportunities for each account
+$accounts = Account::with([
+    'opportunities' => fn ($query) => $query->orderByDesc('CloseDate')->limit(3),
 ])->get();
 
 // Load multiple with conditions
@@ -678,10 +716,13 @@ foreach ($contacts as $contact) {
 }
 
 // Solution: Eager loading
-$contacts = Contact::with('account')->all(); // 2 queries total
+$contacts = Contact::with('account')->get(); // 2 queries total
 foreach ($contacts as $contact) {
     echo $contact->account->Name; // No additional queries
 }
+
+// hasMany / hasOne eager loading is a single query
+$accounts = Account::with('contacts')->get(); // 1 query total
 ```
 
 ### Select Only Needed Columns

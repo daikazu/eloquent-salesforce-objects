@@ -4,6 +4,15 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ## Unreleased
 
+### Added
+
+- **`with()` loads `hasMany` / `hasOne` through SOQL child subqueries, in one API call.** `Account::with('contacts')` now sends `select ..., (select ... from Contacts) from Account` instead of a second query listing every parent Id. That list failed at around 600 parents against a real org because the request was too large.
+    - Relationship names come from describe metadata (new `AdapterInterface::childRelationshipName()`), so custom objects use their real `__r` name.
+    - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery, and `limit()` now applies per parent.
+    - Paged child results are followed, so every child is loaded. This also applies to raw `SalesforceAdapter::query()` results with subqueries.
+    - `belongsTo`, and closures using `offset()`/grouping/`distinct()`, keep using a separate query.
+    - New config key `eager_load_strategy` (`subquery` by default, or `query` for the old behaviour), with env var `SALESFORCE_EAGER_LOAD_STRATEGY`.
+
 ### Security
 
 - **Backslashes in string bindings are now escaped.** Before, only `'` was escaped, so a value ending in `\` could escape its own closing quote and let the next string binding rewrite the WHERE clause. Newlines, carriage returns and tabs are escaped too. If you were pre-escaping values passed to `where()`, stop: they are escaped for you, and pre-escaped values are now stored literally.
@@ -15,6 +24,8 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 - **`toSql()` now returns the exact SOQL that would be sent.** It goes through the same binding escaping as executed queries, so booleans render as `TRUE`/`FALSE` and dates use the SOQL format. `SalesforceBatch` uses `toSql()`, so batched queries also get proper escaping now.
 - **One adapter everywhere.** `AdapterInterface` is now a singleton that resolves to the same `SalesforceAdapter` instance. Queries, saves, relationship subqueries and `SalesforceBatch` all use it, so binding your own `AdapterInterface` replaces it for all of them. Before, reads always used the concrete `SalesforceAdapter`.
 - **Compiling a `where` on a `SOQLGrammar` without a model no longer throws** an uninitialized-property error.
+- **`limit()` inside a `with()` closure no longer sends invalid SOQL.** Laravel compiled it into a `row_number()` window function. It now works through the subquery, and on the separate-query path it throws a clear `InvalidArgumentException`.
+- **`exists()` no longer runs eager loads.**
 - **`cursor()` now selects the same columns as `get()`.** On a model with `$defaultColumns` it adds `CreatedDate`, `LastModifiedDate` and `IsDeleted` like `get()` does. On a model without them, or after `allColumns()`, it expands to every field instead of sending `select *`, which Salesforce rejects.
 - **`cursor()` records its query in `queryHistory()`** and, with `throw_exceptions` off, logs a failed query and yields nothing instead of throwing.
 - **Failed bulk `insert()` / `delete()` chunks are logged** when `throw_exceptions` is off. Before, they were skipped without any log entry.
@@ -24,7 +35,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 ### Changed
 
 - **`join()` and all its variants (`leftJoin`, `crossJoin`, `joinSub`, `joinWhere`, ...) now throw `InvalidArgumentException`**, as the docs already said. Before, they quietly compiled into a child subquery named by pluralizing the object (`Foo__c` became `Foo__cs`), which Salesforce rejects for custom objects, and the rows came back nested rather than joined. Use `with()` for child records, `select('Account.Name')` for parent fields, or a `whereIn` semi-join to filter.
-- `AdapterInterface` gains `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has both.
+- `AdapterInterface` gains `childRelationshipName()`, `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has all three.
 
 ## v1.1.0 - 2026-05-22
 
