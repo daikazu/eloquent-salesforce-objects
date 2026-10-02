@@ -352,12 +352,16 @@ public function boot()
 Get Salesforce object metadata:
 
 ```php
-// Get all field definitions
-$fields = Account::describe();
+// Full describe payload for the object (label, fields, childRelationships, ...)
+$describe = Account::describe();
 
-foreach ($fields as $field) {
+// Field definitions live under the 'fields' key
+foreach ($describe['fields'] as $field) {
     echo "{$field['name']} - {$field['type']}\n";
 }
+
+// Metadata for a single field (null if it doesn't exist)
+$industry = Account::fieldMetadata('Industry');
 
 // Get picklist values
 $industryOptions = Account::picklistValues('Industry');

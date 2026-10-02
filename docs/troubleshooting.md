@@ -161,8 +161,10 @@ Solutions to common issues when working with Eloquent Salesforce Objects.
 
 3. **Check if field exists:**
    ```php
-   $fields = Account::describe();
-   dump($fields); // See all available fields
+   $fieldNames = array_column(Account::describe()['fields'], 'name');
+   dump($fieldNames); // See all available fields
+
+   Account::fieldMetadata('Custom_Field__c'); // null if the field doesn't exist
    ```
 
 ### "SOQL Syntax Error"
