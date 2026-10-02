@@ -214,10 +214,12 @@ $results = Contact::insert([
     ['FirstName' => 'A', 'LastName' => 'One', 'AccountId' => $accountId],
     ['FirstName' => 'B', 'LastName' => 'Two', 'AccountId' => $accountId],
 ], allOrNone: true);
-// $results is a Collection of the save results Salesforce returned
+// One save result per record, in input order:
+// ['id' => '003...', 'success' => true, 'errors' => []]
+$failed = $results->where('success', false);
 
 // Bulk delete by query: chunked automatically
-$deleted = Lead::where('LeadSource', 'Spam')->delete();
+$deleted = Lead::where('LeadSource', 'Spam')->delete(); // number of records actually deleted
 ```
 
 There is **no** `Model::bulkUpdate()`. Bulk updates go through the adapter, which accepts at most 200 records per call, so chunk them yourself:

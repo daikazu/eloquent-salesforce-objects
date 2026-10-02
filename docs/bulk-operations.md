@@ -47,12 +47,23 @@ $contactsData = [
 ];
 
 // Insert all at once
-$contacts = Contact::insert($contactsData);
+$results = Contact::insert($contactsData);
 
-// Returns collection of created models with IDs
-foreach ($contacts as $contact) {
-    echo "Created contact: {$contact->Id}\n";
+// Returns a Collection with one save result per record, in input order
+foreach ($results as $result) {
+    if ($result['success']) {
+        echo "Created contact: {$result['id']}\n";
+    } else {
+        echo "Failed: {$result['errors'][0]['message']}\n";
+    }
 }
+```
+
+Each result is the save result Salesforce returns for that record:
+
+```php
+['id' => '003xx000004TmiQ', 'success' => true, 'errors' => []]
+['id' => null, 'success' => false, 'errors' => [['statusCode' => 'REQUIRED_FIELD_MISSING', 'message' => '...', 'fields' => ['LastName']]]]
 ```
 
 ### With Related Records
@@ -203,8 +214,8 @@ for ($i = 0; $i < 1000; $i++) {
 }
 
 // Automatically chunked into 5 API calls (200 records each)
-$contacts = Contact::insert($largeDataset);
-echo "Created " . count($contacts) . " contacts";
+$results = Contact::insert($largeDataset);
+echo "Created " . $results->where('success', true)->count() . " contacts";
 ```
 
 **How chunking works:**
@@ -224,7 +235,7 @@ $totalCreated = 0;
 
 foreach ($chunks as $index => $chunk) {
     $results = Contact::insert($chunk);
-    $totalCreated += count($results);
+    $totalCreated += $results->where('success', true)->count();
 
     $progress = (($index + 1) / count($chunks)) * 100;
     echo "Progress: " . round($progress, 2) . "%\n";
@@ -263,7 +274,15 @@ $data = [
 $results = Contact::insert($data);
 
 // 2 records created successfully, 1 failed
-echo "Created " . count($results) . " out of " . count($data) . " contacts";
+$created = $results->where('success', true)->count();
+echo "Created {$created} out of " . count($data) . " contacts";
+
+// Inspect the failures (results are in input order)
+$results->reject(fn ($result) => $result['success'])
+    ->each(fn ($result, $index) => logger()->warning('Contact insert failed', [
+        'record' => $data[$index],
+        'errors' => $result['errors'],
+    ]));
 ```
 
 ### Catching Exceptions
@@ -289,12 +308,13 @@ try {
     $results = Contact::insert($data);
 
     // Check for partial failures
-    if (count($results) < count($data)) {
-        $failedCount = count($data) - count($results);
+    $failed = $results->where('success', false);
+
+    if ($failed->isNotEmpty()) {
         logger()->warning("Bulk insert partial failure", [
             'total' => count($data),
-            'successful' => count($results),
-            'failed' => $failedCount,
+            'successful' => count($data) - $failed->count(),
+            'failed' => $failed->count(),
         ]);
     }
 } catch (\Exception $e) {
@@ -426,7 +446,7 @@ public function importContacts($filename)
 
     foreach ($chunks as $index => $chunk) {
         $results = Contact::insert($chunk);
-        $totalCreated += count($results);
+        $totalCreated += $results->where('success', true)->count();
 
         // Update progress
         $progress = (($index + 1) / count($chunks)) * 100;

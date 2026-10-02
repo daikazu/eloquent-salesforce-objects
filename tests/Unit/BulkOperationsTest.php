@@ -668,3 +668,54 @@ describe('bulk operation size limits', function () {
         expect($results)->toBeInstanceOf(Collection::class);
     });
 });
+
+describe('Composite SObject Collections response shape', function () {
+    // Salesforce returns a top-level JSON array of save results for
+    // POST/DELETE /composite/sobjects, not an object with a 'results' key.
+
+    it('returns one result per record for a top-level array insert response', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        Forrest::shouldReceive('post')
+            ->once()
+            ->andReturn([
+                ['id' => '001xx000001', 'success' => true, 'errors' => []],
+                ['id' => null, 'success' => false, 'errors' => [['statusCode' => 'REQUIRED_FIELD_MISSING', 'message' => 'Required fields are missing: [Name]']]],
+            ]);
+
+        $results = Account::query()->insert([['Name' => 'Company A'], ['Industry' => 'Finance']]);
+
+        expect($results)->toHaveCount(2);
+        expect($results[0]['success'])->toBeTrue();
+        expect($results[0]['id'])->toBe('001xx000001');
+        expect($results[1]['success'])->toBeFalse();
+    });
+
+    it('counts only successful deletes for a top-level array delete response', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        Forrest::shouldReceive('describe')->andReturn([
+            'fields' => [['name' => 'Id'], ['name' => 'Name']],
+        ]);
+
+        Forrest::shouldReceive('query')
+            ->once()
+            ->andReturn([
+                'totalSize' => 2,
+                'done'      => true,
+                'records'   => [
+                    ['Id' => '001xx000001', 'attributes' => ['type' => 'Account']],
+                    ['Id' => '001xx000002', 'attributes' => ['type' => 'Account']],
+                ],
+            ]);
+
+        Forrest::shouldReceive('delete')
+            ->once()
+            ->andReturn([
+                ['id' => '001xx000001', 'success' => true, 'errors' => []],
+                ['id' => '001xx000002', 'success' => false, 'errors' => [['statusCode' => 'ENTITY_IS_DELETED']]],
+            ]);
+
+        expect(Account::query()->delete())->toBe(1);
+    });
+});

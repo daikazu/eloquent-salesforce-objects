@@ -255,14 +255,8 @@ class SOQLBuilder extends Builder
             try {
                 $response = $this->adapter->bulkCreate($table, $chunk->toArray(), $allOrNone);
 
-                // Collect results from the response
-                if (isset($response['results'])) {
-                    foreach ($response['results'] as $result) {
-                        $results->push($result);
-                    }
-                } else {
-                    // Fallback if response format is different
-                    $results->push($response);
+                foreach ($this->extractSaveResults($response) ?? [$response] as $result) {
+                    $results->push($result);
                 }
             } catch (Exception $e) {
                 // Log and handle exception based on config
@@ -274,6 +268,31 @@ class SOQLBuilder extends Builder
         }
 
         return $results;
+    }
+
+    /**
+     * Extract per-record save results from a Composite SObject Collections response.
+     *
+     * Salesforce returns a top-level array of save results; a 'results' wrapper is
+     * also accepted. Returns null when the response holds no per-record results.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function extractSaveResults(mixed $response): ?array
+    {
+        if (! is_array($response)) {
+            return null;
+        }
+
+        if (isset($response['results']) && is_array($response['results'])) {
+            return $response['results'];
+        }
+
+        if ($response !== [] && array_is_list($response)) {
+            return $response;
+        }
+
+        return null;
     }
 
     /**
@@ -326,16 +345,13 @@ class SOQLBuilder extends Builder
             try {
                 $response = $this->adapter->bulkDelete($table, $chunk->toArray(), $allOrNone);
 
-                // Count successful deletes from response
-                if (isset($response['results'])) {
-                    foreach ($response['results'] as $result) {
-                        if ($result['success'] ?? false) {
-                            $deleted++;
-                        }
-                    }
-                } else {
-                    // If no detailed results, assume all succeeded
+                $saveResults = $this->extractSaveResults($response);
+
+                if ($saveResults === null) {
+                    // No per-record results to inspect, so assume the whole chunk succeeded
                     $deleted += $chunk->count();
+                } else {
+                    $deleted += count(array_filter($saveResults, fn ($result): bool => (bool) ($result['success'] ?? false)));
                 }
             } catch (Exception $e) {
                 if ($allOrNone || $this->throwExceptions) {
