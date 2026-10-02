@@ -1,6 +1,6 @@
 ---
 name: migrating-from-eloquent-salesforce
-description: Migrate a Laravel app from roblesterjr04/EloquentSalesForce (rob-lester-jr04/eloquent-sales-force, Lester\EloquentSalesForce, ElSF, SObjects facade) to daikazu/eloquent-salesforce-objects. Use when replacing the old package, converting Lester models to SalesforceModel, porting config/eloquent_sf.php, or rewriting SObjects:: calls, ->batch() queries, SyncsWithSalesforce or SObjects::fake() usage.
+description: 'Migrate a Laravel app from roblesterjr04/EloquentSalesForce (rob-lester-jr04/eloquent-sales-force, Lester\EloquentSalesForce, ElSF, SObjects facade) to daikazu/eloquent-salesforce-objects. Use when replacing the old package, converting Lester models to SalesforceModel, porting config/eloquent_sf.php, or rewriting SObjects:: calls, ->batch() queries, SyncsWithSalesforce or SObjects::fake() usage.'
 ---
 
 # Migrating from roblesterjr04/EloquentSalesForce

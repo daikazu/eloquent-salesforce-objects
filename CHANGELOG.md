@@ -2,6 +2,12 @@
 
 All notable changes to `eloquent-salesforce-objects` will be documented in this file.
 
+## v2.0.1 - 2026-10-02
+
+### Fixed
+
+- The `migrating-from-eloquent-salesforce` Boost skill failed to register ("A colon cannot be used in an unquoted mapping value") because `SObjects::` in its unquoted `description` broke the YAML frontmatter. The description is now quoted.
+
 ## v2.0.0 - 2026-10-02
 
 This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](docs/upgrading.md) for what to change.
