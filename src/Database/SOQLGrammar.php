@@ -8,6 +8,7 @@ use Daikazu\EloquentSalesforceObjects\Models\SalesforceModel;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\Grammar;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class SOQLGrammar extends Grammar
 {
@@ -52,11 +53,6 @@ class SOQLGrammar extends Grammar
     protected function wrapValue($value): string
     {
         return $value;
-    }
-
-    protected function unWrapValue($value): array | string
-    {
-        return str_replace('`', '', $value);
     }
 
     /**
@@ -132,46 +128,21 @@ class SOQLGrammar extends Grammar
     }
 
     /**
-     * Compile the "join" portions of the query.
-     *
-     * In SOQL, joins are relationship queries (subqueries), not traditional SQL joins.
-     * Example: SELECT Name, (SELECT LastName FROM Contacts) FROM Account
+     * SOQL has no joins. It can only follow relationships Salesforce defines, and
+     * child records come back nested rather than as flat joined rows.
+     */
+    public const string JOINS_UNSUPPORTED = 'SOQL does not support joins. '
+        . 'Load child records with ->with(\'contacts\'), select parent fields with dot notation (->select(\'Account.Name\')), '
+        . 'or filter by related records with a semi-join: ->whereIn(\'Id\', fn ($q) => $q->select(\'AccountId\')->from(\'Contact\')->where(...)).';
+
+    /**
+     * Reject joins that reach the grammar without going through SOQLBuilder.
      *
      * @param  array  $joins
      */
     protected function compileJoins(Builder $query, $joins): string
     {
-        return collect($joins)
-            ->map(function ($join): string {
-                /** @var SOQLConnection $connection */
-                $connection = $this->connection;
-                $adapter = $connection->getAdapter();
-
-                $table = $join->table;
-
-                // Resolve field columns
-                $columns = $adapter->resolveFields($table, $join->columns ?: ['*']);
-                $columnsList = collect($columns)->implode(', ');
-
-                // Get pluralized relationship name for SOQL
-                $relationshipName = $this->unWrapValue($this->grammarPlural($table));
-
-                // Build subquery
-                $subquery = "SELECT {$columnsList} FROM {$relationshipName}";
-
-                // Add WHERE clauses if present
-                // Note: We skip the first where clause (index 0) as it typically represents
-                // the join condition which is implicit in SOQL relationship queries
-                $wheres = collect($join->wheres)->skip(1)->all();
-
-                if (! empty($wheres)) {
-                    $join->wheres = $wheres;
-                    $subquery .= ' ' . $this->compileWheres($join);
-                }
-
-                return ", ({$subquery})";
-            })
-            ->implode(' ');
+        throw new InvalidArgumentException(self::JOINS_UNSUPPORTED);
     }
 
     protected function concatenateWhereClauses($query, $sql): string
@@ -292,14 +263,5 @@ class SOQLGrammar extends Grammar
     public function getDateFormat(): string
     {
         return 'Y-m-d\TH:i:s\Z';
-    }
-
-    private function grammarPlural(string $table): string
-    {
-        if (Str::endsWith($table, 'try')) {
-            return Str::replaceLast('try', 'tries', $table);
-        }
-
-        return Str::plural($table);
     }
 }

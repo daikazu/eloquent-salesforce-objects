@@ -412,6 +412,21 @@ class SOQLBuilder extends Builder
     }
 
     /**
+     * Reject join(), leftJoin(), joinSub() and friends before they reach the query builder.
+     *
+     * @param  string  $method
+     * @param  array  $parameters
+     */
+    public function __call($method, $parameters)
+    {
+        if (stripos($method, 'join') !== false) {
+            throw new InvalidArgumentException(SOQLGrammar::JOINS_UNSUPPORTED);
+        }
+
+        return parent::__call($method, $parameters);
+    }
+
+    /**
      * Add a "where column" clause to the query.
      *
      * Supports the same signatures as Laravel's whereColumn:

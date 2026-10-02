@@ -114,7 +114,7 @@ Lead::where('Email', $email)->exists();
 |---|---|
 | `has()`, `whereHas()`, `doesntHave()`, `withCount()` | A semi-join with `whereIn` and a closure (below) |
 | `whereColumn()` | A semi-join, or filter in PHP |
-| `join()` | Relationships, or raw SOQL with a subquery |
+| `join()`, `leftJoin()`, `crossJoin()`, `joinSub()`, etc. | `with()` for child records, `select('Account.Name')` for parent fields, a semi-join to filter |
 | `$model->restore()` | Not possible through the REST API |
 | `->batch()` | `SalesforceBatch` |
 

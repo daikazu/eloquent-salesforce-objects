@@ -1,10 +1,11 @@
 <?php
 
+use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLConnection;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Examples\Contact;
-use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use Illuminate\Database\Query\Builder;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
 
 beforeEach(function () {
@@ -584,68 +585,36 @@ describe('SOQLGrammar — whereIn with empty values', function () {
 });
 
 // ===========================================================================
-// SOQLGrammar — grammarPlural (via toSql inspection is indirect;
-//                               tested via compileJoins through join())
+// SOQLBuilder — join() is not supported by SOQL
 // ===========================================================================
 
-describe('SOQLGrammar — grammarPlural pluralization rules', function () {
-    it('pluralizes a standard table name using Str::plural', function () {
-        // Verify via grammar directly: wrap in a minimal unit test.
-        // grammarPlural is private, so we exercise it via the public checkStringLiteral path.
-        // The most reliable surface is to verify the grammar instance method through reflection.
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
+describe('SOQLBuilder — join()', function () {
+    it('throws for every join variant, pointing to with() and parent fields', function (string $method, array $args) {
+        expect(fn () => Account::query()->{$method}(...$args))
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support joins');
+    })->with([
+        'join'          => ['join', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'leftJoin'      => ['leftJoin', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'rightJoin'     => ['rightJoin', ['Contact', 'Contact.AccountId', '=', 'Account.Id']],
+        'crossJoin'     => ['crossJoin', ['Contact']],
+        'joinWhere'     => ['joinWhere', ['Contact', 'Contact.Name', '=', 'x']],
+        'leftJoinWhere' => ['leftJoinWhere', ['Contact', 'Contact.Name', '=', 'x']],
+    ]);
+
+    it('throws when a join added to the base query reaches the grammar', function () {
+        $connection = new SOQLConnection(Mockery::mock(AdapterInterface::class));
         $grammar = new SOQLGrammar($connection);
+        $connection->setGrammar($grammar);
 
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
+        $query = (new Builder($connection, $grammar))
+            ->from('Account')
+            ->join('Contact', 'Contact.AccountId', '=', 'Account.Id');
 
-        // Standard word: Contact -> Contacts
-        expect($method->invoke($grammar, 'Contact'))->toBe('Contacts');
+        expect(fn () => $query->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL does not support joins');
     });
 
-    it('applies the special -try -> -tries rule for words ending exactly in "try"', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
-
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
-
-        // A table name that truly ends with 'try' (e.g. a custom object suffixed with _try)
-        expect($method->invoke($grammar, 'Object_try'))->toBe('Object_tries');
-        expect($method->invoke($grammar, 'My_Custom_try'))->toBe('My_Custom_tries');
-    });
-
-    it('does not apply the -try rule when the last three characters are not exactly "try"', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
-
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
-
-        // 'Country' ends with 'ntry', not 'try' — falls through to Str::plural
-        expect($method->invoke($grammar, 'Country'))->toBe('Countries');
-
-        // 'Entry' ends with 'ntry', not 'try' — falls through to Str::plural
-        expect($method->invoke($grammar, 'OpportunityLineItemEntry'))->toBe('OpportunityLineItemEntries');
-    });
-
-    it('falls through to Str::plural for words not ending in -try', function () {
-        $connection = new SOQLConnection(
-            app(SalesforceAdapter::class)
-        );
-        $grammar = new SOQLGrammar($connection);
-
-        $method = new ReflectionMethod($grammar, 'grammarPlural');
-        $method->setAccessible(true);
-
-        expect($method->invoke($grammar, 'Account'))->toBe('Accounts');
-        expect($method->invoke($grammar, 'Opportunity'))->toBe('Opportunities');
-        expect($method->invoke($grammar, 'Lead'))->toBe('Leads');
+    it('still forwards other query builder methods', function () {
+        expect(Account::query()->whereIn('Id', ['001'])->getQuery()->wheres)->toHaveCount(1);
     });
 });

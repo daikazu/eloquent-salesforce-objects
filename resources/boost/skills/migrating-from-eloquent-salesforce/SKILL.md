@@ -265,7 +265,7 @@ Forrest::shouldReceive('describe')->andReturn(['fields' => [/* ['name' => ..., '
 Forrest::shouldReceive('patch')->once()->andReturn([['id' => '001...', 'success' => true]]); // bulkUpdate
 ```
 
-- **`join()`** is not supported. Use relationships with `with()`, or a semi-join: `Account::whereIn('Id', fn ($q) => $q->select('AccountId')->from('Contact')->where(...))`.
+- **`join()`** and every variant throw, because SOQL has no joins. Use `with()` for child records, dot notation (`select('Account.Name')`) for parent fields, or a semi-join to filter: `Account::whereIn('Id', fn ($q) => $q->select('AccountId')->from('Contact')->where(...))`.
 - **Custom request headers** are not supported.
 
 ## Behavior changes that won't throw errors

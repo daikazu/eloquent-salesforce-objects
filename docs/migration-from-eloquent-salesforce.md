@@ -667,7 +667,7 @@ Forrest::shouldReceive('query')->andReturn(['totalSize' => 0, 'done' => true, 'r
 | `make:salesforce` command | `make:salesforce-model` |
 | `SyncFromSalesforce` command | Removed with the sync feature |
 | `/login/salesforce` routes | Define your own (see [OAuth Routes](#oauth-routes)) |
-| `join()` | Not supported. Use relationships with `with()`. |
+| `join()` and its variants | Throws, because SOQL has no joins. Use `with()` for child records, dot notation (`select('Account.Name')`) for parent fields, or a [semi-join](relationships.md#querying-relationships) to filter. |
 
 ## Behavior Changes to Check
 

@@ -23,6 +23,7 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Changed
 
+- **`join()` and all its variants (`leftJoin`, `crossJoin`, `joinSub`, `joinWhere`, ...) now throw `InvalidArgumentException`**, as the docs already said. Before, they quietly compiled into a child subquery named by pluralizing the object (`Foo__c` became `Foo__cs`), which Salesforce rejects for custom objects, and the rows came back nested rather than joined. Use `with()` for child records, `select('Account.Name')` for parent fields, or a `whereIn` semi-join to filter.
 - `AdapterInterface` gains `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has both.
 
 ## v1.1.0 - 2026-05-22
