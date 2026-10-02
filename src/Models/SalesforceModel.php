@@ -6,6 +6,7 @@ namespace Daikazu\EloquentSalesforceObjects\Models;
 
 use Daikazu\EloquentSalesforceObjects\Contracts\AdapterInterface;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLBuilder;
+use Daikazu\EloquentSalesforceObjects\Database\SOQLGrammar;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLHasMany;
 use Daikazu\EloquentSalesforceObjects\Database\SOQLHasOne;
 use Daikazu\EloquentSalesforceObjects\Models\Concerns\DeletesSalesforceRecords;
@@ -71,6 +72,17 @@ class SalesforceModel extends Model
         $fields = array_merge($this->readOnly, $exclude);
 
         return Arr::except($this->attributes, $fields);
+    }
+
+    /**
+     * Salesforce has no insert-or-ignore (Laravel 13's saveOrIgnore()).
+     *
+     * @param  array<string, mixed>  $options
+     * @param  array<int, string>|string|null  $uniqueBy
+     */
+    public function saveOrIgnore(array $options = [], array | string | null $uniqueBy = null): never
+    {
+        throw new InvalidArgumentException(SOQLGrammar::INSERT_OR_IGNORE_UNSUPPORTED);
     }
 
     /**

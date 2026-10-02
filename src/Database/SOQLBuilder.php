@@ -929,6 +929,18 @@ class SOQLBuilder extends Builder
             throw new InvalidArgumentException(SOQLGrammar::JOINS_UNSUPPORTED);
         }
 
+        // Query builder writes with no Salesforce form; fail before they reach PDO-only code
+        $unsupported = match (strtolower($method)) {
+            'insertorignore', 'insertorignorereturning', 'insertorignoreusing' => SOQLGrammar::INSERT_OR_IGNORE_UNSUPPORTED,
+            'insertusing'                                                      => 'SOQL cannot insert from a query. Query the records, then insert() them.',
+            'updateorinsert'                                                   => 'updateOrInsert() is not supported. Use updateOrCreate() for one record, or upsert() with an External Id field.',
+            default                                                            => null,
+        };
+
+        if ($unsupported !== null) {
+            throw new InvalidArgumentException($unsupported);
+        }
+
         return parent::__call($method, $parameters);
     }
 

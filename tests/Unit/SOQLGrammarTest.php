@@ -503,38 +503,26 @@ describe('SOQLGrammar — compileAggregate with distinct', function () {
 // SOQLGrammar — compileLock
 // ===========================================================================
 
-describe('SOQLGrammar — compileLock FOR UPDATE', function () {
-    it('appends FOR UPDATE to the compiled SOQL', function () {
+describe('SOQLGrammar — locking', function () {
+    beforeEach(function () {
         Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
-
-        $sql = Account::lockForUpdate()->toSql();
-
-        expect($sql)->toContain('FOR UPDATE');
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
     });
 
-    it('places FOR UPDATE after the FROM clause', function () {
-        Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
+    // Verified against a real org: "select Id from Account limit 1 for update" is
+    // rejected with MALFORMED_QUERY; row locking is Apex-only.
+    it('throws for lockForUpdate() and sharedLock(), since the API has no row locking', function (string $method) {
+        expect(fn () => Account::select(['Id'])->{$method}()->toSql())
+            ->toThrow(InvalidArgumentException::class, 'Row locking (FOR UPDATE) is only available in Apex');
+    })->with(['lockForUpdate', 'sharedLock']);
 
-        $sql = Account::lockForUpdate()->toSql();
+    it('passes FOR VIEW and FOR REFERENCE through', function (string $clause) {
+        expect(Account::select(['Id'])->lock($clause)->toSql())->toBe("select Id from Account {$clause}");
+    })->with(['FOR VIEW', 'FOR REFERENCE']);
 
-        $fromPos = strpos($sql, 'from Account');
-        $lockPos = strpos($sql, 'FOR UPDATE');
-
-        expect($fromPos)->not->toBeFalse();
-        expect($lockPos)->not->toBeFalse();
-        expect($lockPos)->toBeGreaterThan($fromPos);
-    });
-
-    it('can be combined with WHERE clauses', function () {
-        Forrest::shouldReceive('hasToken')->andReturn(true);
-        Forrest::shouldReceive('describe')->with('Account')->andReturn(accountDescribe());
-
-        $sql = Account::where('Name', 'Acme')->lockForUpdate()->toSql();
-
-        expect($sql)->toContain('where');
-        expect($sql)->toContain('FOR UPDATE');
+    it('throws for any other lock string', function () {
+        expect(fn () => Account::select(['Id'])->lock('LOCK IN SHARE MODE')->toSql())
+            ->toThrow(InvalidArgumentException::class, 'FOR VIEW or FOR REFERENCE');
     });
 });
 
@@ -700,4 +688,36 @@ describe('SOQLGrammar — SQL-only constructs', function () {
 
         expect(Account::distinct()->count('Industry'))->toBe(7);
     });
+});
+
+describe('SOQLGrammar — more SQL-only constructs', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(accountDescribe());
+    });
+
+    it('throws for inOrderOf(), since SOQL has no CASE expressions', function () {
+        expect(fn () => Account::select(['Id'])->inOrderOf('Industry', ['Tech', 'Retail'])->toSql())
+            ->toThrow(InvalidArgumentException::class, 'SOQL cannot order by a list of values');
+    });
+
+    it('compiles havingBetween() to a pair of comparisons', function () {
+        expect(Account::select(['Industry'])->groupBy('Industry')->havingBetween('COUNT(Id)', [2, 10])->toSql())
+            ->toBe('select Industry from Account group by Industry having (COUNT(Id) >= 2 and COUNT(Id) <= 10)');
+        expect(Account::select(['Industry'])->groupBy('Industry')->havingNotBetween('COUNT(Id)', [2, 10])->toSql())
+            ->toBe('select Industry from Account group by Industry having (COUNT(Id) < 2 or COUNT(Id) > 10)');
+    });
+
+    it('throws a clear error for writes SOQL has no form of', function (Closure $call, string $message) {
+        Forrest::shouldReceive('sobjects')->never();
+        Forrest::shouldReceive('post')->never();
+
+        expect($call)->toThrow(InvalidArgumentException::class, $message);
+    })->with([
+        'insertOrIgnore'        => [fn () => Account::insertOrIgnore([['Name' => 'A']]), 'no insert-or-ignore'],
+        'fillAndInsertOrIgnore' => [fn () => Account::fillAndInsertOrIgnore([['Name' => 'A']]), 'no insert-or-ignore'],
+        'insertUsing'           => [fn () => Account::query()->insertUsing(['Name'], 'select Name from Lead'), 'cannot insert from a query'],
+        'updateOrInsert'        => [fn () => Account::query()->updateOrInsert(['Name' => 'A'], ['Rating' => 'Hot']), 'updateOrCreate()'],
+        'saveOrIgnore'          => [fn () => (new Account(['Name' => 'A']))->saveOrIgnore(), 'no insert-or-ignore'],
+    ]);
 });

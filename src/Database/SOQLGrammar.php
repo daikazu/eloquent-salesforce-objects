@@ -483,9 +483,80 @@ class SOQLGrammar extends Grammar
             : parent::substituteBindingsIntoRawSql($sql, $bindings);
     }
 
+    /**
+     * The API has no row locking: "FOR UPDATE" is Apex-only and rejected as MALFORMED_QUERY.
+     * SOQL's FOR VIEW / FOR REFERENCE (which update recently-viewed data) pass through.
+     */
     protected function compileLock(Builder $query, $value): string
     {
-        return 'FOR UPDATE';
+        if (is_string($value) && in_array(strtoupper(trim($value)), ['FOR VIEW', 'FOR REFERENCE'], true)) {
+            return strtoupper(trim($value));
+        }
+
+        if (is_bool($value)) {
+            throw new InvalidArgumentException(
+                'Row locking (FOR UPDATE) is only available in Apex; the Salesforce API rejects it. '
+                . 'Remove lockForUpdate()/sharedLock() (and refreshForUpdate()).'
+            );
+        }
+
+        throw new InvalidArgumentException('SOQL only supports the lock clauses FOR VIEW or FOR REFERENCE.');
+    }
+
+    /**
+     * Reject inOrderOf(), which compiles to a CASE expression SOQL doesn't have.
+     */
+    protected function compileOrdersToArray(Builder $query, $orders): array
+    {
+        foreach ($orders as $order) {
+            if (($order['type'] ?? null) === 'InOrderOf') {
+                throw new InvalidArgumentException(
+                    'SOQL cannot order by a list of values (inOrderOf()). Sort the results in PHP instead: ->get()->sortBy(...).'
+                );
+            }
+        }
+
+        return parent::compileOrdersToArray($query, $orders);
+    }
+
+    /**
+     * SOQL has no BETWEEN, so compile havingBetween() to a pair of comparisons.
+     *
+     * @param  array  $having
+     */
+    protected function compileHavingBetween($having): string
+    {
+        $values = array_values(is_array($having['values']) ? $having['values'] : iterator_to_array($having['values']));
+        $column = $this->wrap($having['column']);
+        $min = $this->parameter($values[0]);
+        $max = $this->parameter($values[count($values) - 1]);
+
+        return $having['not']
+            ? "({$column} < {$min} or {$column} > {$max})"
+            : "({$column} >= {$min} and {$column} <= {$max})";
+    }
+
+    public const string INSERT_OR_IGNORE_UNSUPPORTED = 'Salesforce has no insert-or-ignore. '
+        . 'Use upsert() with an External Id field, or insert()/save() and handle DUPLICATE_VALUE errors.';
+
+    public function compileInsertOrIgnore(Builder $query, array $values): string
+    {
+        throw new InvalidArgumentException(self::INSERT_OR_IGNORE_UNSUPPORTED);
+    }
+
+    public function compileInsertOrIgnoreReturning(Builder $query, array $values, array $returning, ?array $uniqueBy): string
+    {
+        throw new InvalidArgumentException(self::INSERT_OR_IGNORE_UNSUPPORTED);
+    }
+
+    public function compileInsertUsing(Builder $query, array $columns, string $sql): string
+    {
+        throw new InvalidArgumentException('SOQL cannot insert from a query. Query the records, then insert() them.');
+    }
+
+    public function compileUpsert(Builder $query, array $values, array $uniqueBy, array $update): string
+    {
+        throw new InvalidArgumentException('Use upsert() on a Salesforce model query, which upserts by External Id.');
     }
 
     public function getDateFormat(): string
