@@ -109,6 +109,23 @@ See the [Quickstart Guide](docs/quickstart.md) for a full walkthrough.
 - [Troubleshooting](docs/troubleshooting.md)
 - [Migrating from EloquentSalesForce](docs/migration-from-eloquent-salesforce.md)
 
+## AI Agent Skills (Laravel Boost)
+
+The package ships two [Laravel Boost](https://laravel.com/docs/boost) skills that teach AI coding agents (Claude Code, Cursor, Codex, etc.) how to use it correctly:
+
+| Skill | Use it for |
+|-------|------------|
+| `eloquent-salesforce-objects-development` | Defining models, querying, CRUD, bulk and batch operations, metadata, Apex REST, and testing against Salesforce |
+| `migrating-from-eloquent-salesforce` | Moving an app from [roblesterjr04/EloquentSalesForce](https://github.com/roblesterjr04/EloquentSalesForce) to this package |
+
+If your app uses Boost, the skills are offered automatically when you run:
+
+```bash
+php artisan boost:install
+# or, if Boost is already installed
+php artisan boost:update --discover
+```
+
 ## Testing
 
 ```bash
