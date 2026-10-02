@@ -212,6 +212,7 @@ Account::with('contacts')->get();
 - `where`, `orderBy`, `select` and `limit` in a `with()` closure go into the subquery. `limit()` applies **per parent**: `limit(3)` gives each account up to 3 contacts.
 - A `hasOne` fetches one child per parent.
 - If Salesforce returns a parent's children in several pages, every page is fetched.
+- `chaperone()`, `withDefault()` and `afterQuery()` work as they do in Laravel. For example, `with(['contacts' => fn ($q) => $q->chaperone('account')])` sets each contact's `account` without another query.
 - Up to 20 relationships per query load this way, which is the most child subqueries Salesforce allows in one query. Any beyond that use a separate query.
 
 `belongsTo` relationships, and `hasMany`/`hasOne` that a subquery can't express, use one extra query per relationship instead:

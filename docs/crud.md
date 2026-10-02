@@ -225,14 +225,50 @@ $account->save();
 $changes = $account->getChanges();
 ```
 
+### Update Matching Records
+
+`update()` on a query updates every matching record, 200 per API request, and returns how many saved. Like Laravel's query `update()`, it skips model events:
+
+```php
+$updated = Account::where('Industry', 'Tech')->update(['Rating' => 'Hot']);
+
+// Set a datetime field to now on the matching records
+Account::where('Rating', 'Hot')->touch('Last_Reviewed__c');
+```
+
+Values must be literal: `update(['Count__c' => DB::raw('Count__c + 1')])` throws, because Salesforce can't compute a field from its current value.
+
 ### Increment/Decrement
 
-Note: Salesforce doesn't support direct increment/decrement. You must read, modify, and save:
+Salesforce has no atomic increment. On a model, `increment()` / `decrement()` compute the new value and `save()` it, so it isn't atomic: a concurrent change to the same field can be overwritten.
 
 ```php
 $opportunity = Opportunity::find($id);
-$opportunity->Amount = $opportunity->Amount + 1000;
-$opportunity->save();
+
+$opportunity->increment('Amount', 1000);
+$opportunity->decrement('Probability', 5, ['StageName' => 'Negotiation']); // with extra fields
+$opportunity->incrementEach(['Amount' => 1000, 'TotalOpportunityQuantity' => 2]);
+```
+
+On a query (`Opportunity::where(...)->increment('Amount')`) they throw, since a read-then-write across many records could silently lose concurrent changes.
+
+### Upsert by External Id
+
+`upsert()` creates or updates records matched on an External Id field, 200 per API request, and returns how many saved:
+
+```php
+$saved = Account::upsert([
+    ['ERP_Id__c' => 'A-100', 'Name' => 'Acme', 'Industry' => 'Technology'],
+    ['ERP_Id__c' => 'A-101', 'Name' => 'Globex'],
+], 'ERP_Id__c');
+```
+
+Salesforce matches on exactly one External Id field and updates every field you send. So the third argument (`$update`) must be omitted or list every field; to update only some fields, send only those.
+
+### Create and Get the Id
+
+```php
+$id = Account::insertGetId(['Name' => 'Acme']); // '001...'
 ```
 
 ## Deleting Records

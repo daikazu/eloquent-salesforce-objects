@@ -105,7 +105,8 @@ Lead::where('Email', $email)->exists();
 
 - Date and datetime values are formatted by the field's type from describe metadata, unquoted. Only strings that are exactly `YYYY-MM-DD` or an ISO datetime are sent unquoted; parent fields (`Account.CreatedDate`) aren't looked up, so pass Carbon there.
 - `whereNull('X')` compiles to `X = null`, which is valid SOQL.
-- `chunk()` and `cursor()` work for large result sets.
+- `chunk()`, `each()`, `lazy()` and `cursor()` work for large result sets. `chunk`/`each`/`lazy` page by `Id`, so don't add `orderBy()`/`offset()`/`limit()` to them: those force `OFFSET` paging, which Salesforce caps at 2000. Use `cursorPaginate()` for paged UIs past 2000.
+- `toRawSql()` returns the exact SOQL, same as `toSql()`.
 - `toSql()` returns the SOQL that would be sent, with bindings escaped the same way. To see queries that actually ran, read `app(SalesforceAdapter::class)->queryHistory()`.
 - `whereBetween()` / `whereNotBetween()` compile to `>=`/`<=` pairs, since SOQL has no `BETWEEN`.
 - Bindings are escaped automatically (quotes, backslashes, newlines). Never pre-escape values passed to `where()`.
@@ -119,6 +120,10 @@ Lead::where('Email', $email)->exists();
 | `distinct()` | `groupBy('Field')`, or `distinct()->count('Field')` for `COUNT_DISTINCT()` |
 | `inRandomOrder()` | `->get()->shuffle()` |
 | `whereTime()` | Compare the full datetime: `where('CreatedDate', '>=', now()->setTime(10, 0))` |
+| `lockForUpdate()`, `sharedLock()` | Nothing; the API has no row locking (`lock('FOR VIEW')` works) |
+| `inOrderOf()` | `->get()->sortBy(...)` |
+| Query `increment()` / `decrement()` | `$model->increment()` (computes and saves, not atomic), or `update()` with explicit values |
+| `insertOrIgnore()`, `insertUsing()`, `updateOrInsert()`, `saveOrIgnore()` | `upsert()` by External Id, or `updateOrCreate()` |
 | `join()`, `leftJoin()`, `crossJoin()`, `joinSub()`, etc. | `with()` for child records, `select('Account.Name')` for parent fields, a semi-join to filter |
 | `$model->restore()` | Not possible through the REST API |
 | `->batch()` | `SalesforceBatch` |
@@ -233,7 +238,14 @@ $failed = $results->where('success', false);
 $deleted = Lead::where('LeadSource', 'Spam')->delete(); // number of records actually deleted
 ```
 
-There is **no** `Model::bulkUpdate()`. Bulk updates go through the adapter, which sends 200 records per request (`allOrNone` applies per request):
+Query `update()` gives every matching record the same values and returns how many saved; `upsert()` matches on one External Id field and returns how many saved:
+
+```php
+Account::where('Industry', 'Tech')->update(['Rating' => 'Hot']);
+Account::upsert([['ERP_Id__c' => 'A-1', 'Name' => 'Acme']], 'ERP_Id__c'); // $update must be omitted or list every field
+```
+
+There is **no** `Model::bulkUpdate()`. Per-record values go through the adapter, which sends 200 records per request (`allOrNone` applies per request):
 
 ```php
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;

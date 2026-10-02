@@ -21,7 +21,7 @@ This package was heavily inspired by fabulous [roblesterjr04/EloquentSalesForce]
 - **CRUD Operations** - Create, read, update, and delete Salesforce records
 - **Relationships** - `hasMany`, `belongsTo`, and `hasOne`
 - **Batch Queries** - Execute multiple SOQL queries in a single API call
-- **Bulk Operations** - Efficient bulk insert, update, and delete
+- **Bulk Operations** - Efficient bulk insert, update, upsert by External Id, and delete
 - **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX
 - **Pagination** - Built-in pagination with Laravel's paginator
 - **Apex REST** - Call custom Apex REST endpoints

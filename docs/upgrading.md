@@ -18,9 +18,9 @@
 - [ ] Replace `catch (QueryException $e)` around Salesforce queries with `catch (SalesforceException $e)`.
 - [ ] Stop parsing error messages. Use `$e->errorCode` / `$e->statusCode`.
 - [ ] Remove manual escaping (`addslashes()`, `str_replace("'", "\\'", ...)`) from values passed to `where()`.
-- [ ] Search for `join(`, `leftJoin(`, `distinct()`, `inRandomOrder()`, `whereTime(` and `whereBetweenColumns(` on Salesforce models.
+- [ ] Search for `join(`, `leftJoin(`, `distinct()`, `inRandomOrder()`, `whereTime(`, `whereBetweenColumns(`, `lockForUpdate(`, `sharedLock(`, `inOrderOf(` and query-level `->increment(` on Salesforce models.
 - [ ] Check any `with()` closure that calls `limit()`: it now limits per parent.
-- [ ] If you implement `AdapterInterface` yourself, add the three new methods.
+- [ ] If you implement `AdapterInterface` yourself, add the four new methods.
 - [ ] If a `paginate()` caller needs fields outside `$defaultColumns`, use `allColumns()->paginate()`.
 - [ ] If you compensated for timezones on datetime filters, remove the compensation.
 
@@ -92,8 +92,12 @@ These used to produce SQL that Salesforce rejected. They now throw `InvalidArgum
 | `whereTime()`, `orWhereTime()` | Compare the full datetime: `where('CreatedDate', '>=', now()->setTime(10, 0))` |
 | `whereBetweenColumns()`, `whereValueBetween()` | A semi-join, or filter in PHP |
 | `limit()` in a `with()` closure, when the relationship can't use a subquery | Remove `limit()` and trim the loaded collection |
+| `lockForUpdate()`, `sharedLock()`, `refreshForUpdate()` | Nothing: the API has no row locking (`FOR UPDATE` is Apex-only). `lock('FOR VIEW')` / `lock('FOR REFERENCE')` still work |
+| `inOrderOf()` | Sort in PHP: `->get()->sortBy(...)` |
+| `increment()` / `decrement()` on a query | `$model->increment()` per record, or `update()` with explicit values |
+| `insertOrIgnore()`, `insertUsing()`, `updateOrInsert()`, `saveOrIgnore()` | `upsert()` by External Id, or `updateOrCreate()` |
 
-These now work instead of failing: `whereBetween()` / `whereNotBetween()`, `whereYear()` / `whereMonth()` / `whereDay()`, `whereDate()` on datetime fields, `null` inside `whereIn()`, and an empty `whereNotIn()`.
+These now work instead of failing: query `update()`, `touch($column)` and `forceDelete()`, `upsert()` by External Id, `insertGetId()`, `$model->increment()` / `decrement()`, `toRawSql()`, `havingBetween()`, `whereBetween()` / `whereNotBetween()`, `whereYear()` / `whereMonth()` / `whereDay()`, `whereDate()` on datetime fields, `null` inside `whereIn()`, and an empty `whereNotIn()`.
 
 ## Eager loading uses subqueries
 
@@ -128,9 +132,10 @@ Account::whereYear('CreatedDate', 2025)->get();                       // CALENDA
 
 ## Custom `AdapterInterface` implementations
 
-`AdapterInterface` gained three methods the query builder needs. `SalesforceAdapter` already has them; add them to your own implementation:
+`AdapterInterface` gained four methods the query builder needs. `SalesforceAdapter` already has them; add them to your own implementation:
 
 ```php
+public function bulkUpsert(string $object, string $externalIdField, array $records, bool $allOrNone = false): array;
 public function childRelationshipName(string|object $parent, string $childObject, string $field): ?string;
 public function resolveFields(string|object $object, array $columns = ['*']): array;
 public function queryHistory(): \Illuminate\Support\Collection;
@@ -139,6 +144,8 @@ public function queryHistory(): \Illuminate\Support\Collection;
 `AdapterInterface` is now a singleton that resolves to the `SalesforceAdapter` instance. Binding your own implementation replaces it for queries, saves, eager loading and batches. In 1.x it only affected saves.
 
 ## Smaller behaviour changes
+
+- `chunk()`, `each()` and `lazy()` page by `Id` when the query has no `orderBy`/`offset`/`limit`, so they work past Salesforce's 2,000-record `OFFSET` cap. Chunks now arrive in `Id` order.
 
 - `SalesforceAdapter::bulkUpdate()` accepts any number of records, sending 200 per request. `allOrNone` applies per request.
 - `cursor()` selects the same columns as `get()`, and no longer sends `select *` for models without `$defaultColumns`.

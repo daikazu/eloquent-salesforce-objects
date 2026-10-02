@@ -8,6 +8,13 @@ This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](d
 
 ### Added
 
+- **Eloquent methods that crashed on the missing PDO now work:**
+    - query `update($values)` (200 records per request; returns how many saved), `touch($column)` and `forceDelete()`
+    - `upsert($rows, 'External_Id__c')` by External Id, with the new `SalesforceAdapter::bulkUpsert()` (also on `AdapterInterface`)
+    - `insertGetId()` / `fillAndInsertGetId()`
+    - `$model->increment()` / `decrement()` / `incrementEach()` / `decrementEach()`, which compute the value and `save()` (not atomic)
+    - `toRawSql()` / `dumpRawSql()` / `ddRawSql()`
+- **Laravel 13 `#[Refreshes]`** fields are re-read after Salesforce saves.
 - **`SalesforceException::$statusCode` and `::$errorCode`** expose the HTTP status and Salesforce error code (e.g. `REQUEST_LIMIT_EXCEEDED`) of a failed call.
 - **`with()` loads `hasMany` / `hasOne` through SOQL child subqueries, in one API call.** `Account::with('contacts')` now sends `select ..., (select ... from Contacts) from Account` instead of a second query listing every parent Id. That list failed at around 600 parents against a real org because the request was too large.
     - Relationship names come from describe metadata (new `AdapterInterface::childRelationshipName()`), so custom objects use their real `__r` name.
@@ -23,6 +30,9 @@ This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](d
 
 ### Fixed
 
+- **`chunk()`, `each()` and `lazy()` work past 2,000 records.** They paged with `OFFSET`, which Salesforce caps at 2000, so they failed there (or quietly stopped with `throw_exceptions` off). Without their own order/offset/limit they now page by `Id`.
+- **`with()` subqueries honour `chaperone()`, `withDefault()` and `afterQuery()`.** Children now go through Laravel's `Relation::match()`, and the subquery always selects the foreign key.
+- **`havingBetween()`** compiles to a `>=`/`<=` pair.
 - **`paginate()` and `simplePaginate()` use `$defaultColumns`**, like `get()` and `cursor()`. Before, they selected every field unless you passed columns.
 - **`SalesforceAdapter::bulkUpdate()` accepts any number of records**, sending 200 per request and merging the results, like `insert()` and `delete()`. Before, it threw above 200. `allOrNone` applies per request.
 - **`whereTime()` / `orWhereTime()` throw `InvalidArgumentException`.** SOQL has no time-of-day comparison. Before, `whereTime()` behaved like `where()` and sent a quoted time Salesforce rejected.
@@ -53,10 +63,11 @@ This is a major release with breaking changes. See [Upgrading from 1.x to 2.0](d
 
 ### Changed
 
+- **These now throw `InvalidArgumentException` with what to use instead:** `lockForUpdate()` / `sharedLock()` (the API rejects `FOR UPDATE`; `FOR VIEW` / `FOR REFERENCE` still work), `inOrderOf()`, query-level `increment()` / `decrement()`, `insertOrIgnore()`, `insertUsing()`, `updateOrInsert()` and `saveOrIgnore()`.
 - **Eloquent queries throw `SalesforceException` instead of Laravel's `QueryException`.** Before, a failed `get()`/`first()`/`cursor()` was wrapped in `QueryException`, so `catch (SalesforceException)`, as the docs recommend, didn't catch it. Code that catches `QueryException` around Salesforce queries needs updating.
 - **`MalformedQueryException` now extends `SalesforceException` and is thrown for `MALFORMED_QUERY` errors.** Before, it existed but was never thrown.
 - **`join()` and all its variants (`leftJoin`, `crossJoin`, `joinSub`, `joinWhere`, ...) now throw `InvalidArgumentException`**, as the docs already said. Before, they quietly compiled into a child subquery named by pluralizing the object (`Foo__c` became `Foo__cs`), which Salesforce rejects for custom objects, and the rows came back nested rather than joined. Use `with()` for child records, `select('Account.Name')` for parent fields, or a `whereIn` semi-join to filter.
-- `AdapterInterface` gains `childRelationshipName()`, `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has all three.
+- `AdapterInterface` gains `bulkUpsert()`, `childRelationshipName()`, `resolveFields()` and `queryHistory()`, which the query builder needs. Custom implementations of the interface must add them; `SalesforceAdapter` already has all four.
 
 ## v1.1.0 - 2026-05-22
 

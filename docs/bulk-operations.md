@@ -7,6 +7,7 @@ Learn how to efficiently work with multiple Salesforce records using bulk insert
 - [Introduction](#introduction)
 - [Bulk Insert](#bulk-insert)
 - [Bulk Update](#bulk-update)
+- [Bulk Upsert](#bulk-upsert)
 - [Bulk Delete](#bulk-delete)
 - [Advanced Features](#advanced-features)
 - [Error Handling](#error-handling)
@@ -93,7 +94,13 @@ $contacts = Contact::insert($contactsData);
 
 Update multiple records efficiently.
 
-Models have no `bulkUpdate()` method. Bulk updates go through `SalesforceAdapter::bulkUpdate()`, which takes the Salesforce object name, an array of records (each must include `Id`), and an optional `allOrNone` flag.
+To give every matching record the same values, call `update()` on a query:
+
+```php
+$updated = Account::where('Industry', 'Technology')->update(['Rating' => 'Hot']); // number saved
+```
+
+To give each record its own values, use `SalesforceAdapter::bulkUpdate()`, which takes the Salesforce object name, an array of records (each must include `Id`), and an optional `allOrNone` flag.
 
 > **Note:** Like `insert()` and query `delete()`, `bulkUpdate()` sends larger lists in requests of up to 200 records (`bulk_operation_size`) and returns the merged per-record results. `allOrNone` applies to each request, not across requests: if a later request fails, earlier ones have already been saved.
 
@@ -130,6 +137,21 @@ $updates = $accounts->map(function ($account) {
 
 // Any number of records; sent 200 per request
 $results = app(SalesforceAdapter::class)->bulkUpdate('Account', $updates->values()->all());
+```
+
+## Bulk Upsert
+
+`upsert()` creates or updates records matched on an External Id field, 200 per request, and returns how many saved:
+
+```php
+$saved = Account::upsert($rows, 'ERP_Id__c');
+```
+
+Every row needs a value for the External Id field. Salesforce updates every field you send, so the optional third argument must list all of them or be left out. For per-record results (including `created`), use the adapter:
+
+```php
+$results = app(SalesforceAdapter::class)->bulkUpsert('Account', 'ERP_Id__c', $rows);
+// [['id' => '001...', 'success' => true, 'created' => false, 'errors' => []], ...]
 ```
 
 ## Bulk Delete

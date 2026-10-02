@@ -361,6 +361,8 @@ echo $soql;
 // select Id, CreatedDate, LastModifiedDate, IsDeleted, Name, Industry, ... from Account where Industry = 'Technology' order by Name asc
 ```
 
+`toRawSql()` returns the same string, and `dumpRawSql()` / `ddRawSql()` dump it.
+
 ### Enable Query Logging
 
 Enable query logging in `config/eloquent-salesforce-objects.php`:
@@ -434,7 +436,12 @@ Account::where('Industry', 'Technology')
             $this->processAccount($account);
         }
     });
+
+// each() and lazy() work the same way
+Account::where('Industry', 'Technology')->lazy()->each(fn ($account) => $this->processAccount($account));
 ```
+
+Salesforce caps SOQL `OFFSET` at 2000, so `chunk()`, `each()` and `lazy()` page by `Id` instead (`where Id > '…' order by Id`), which works for any number of records. That needs a query with no `orderBy()`, `offset()` or `limit()` of its own. With one of those, they page with `OFFSET` and stop working past 2,000 records. Use `chunkById()` / `lazyById()`, or `cursorPaginate()` for paged UIs.
 
 ## Query Examples
 
