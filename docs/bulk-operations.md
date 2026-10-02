@@ -95,7 +95,7 @@ Update multiple records efficiently.
 
 Models have no `bulkUpdate()` method. Bulk updates go through `SalesforceAdapter::bulkUpdate()`, which takes the Salesforce object name, an array of records (each must include `Id`), and an optional `allOrNone` flag.
 
-> **Note:** Unlike `insert()` and query `delete()`, `bulkUpdate()` is **not** chunked for you. It accepts at most 200 records per call (`bulk_operation_size`) and throws a `SalesforceException` above that, so chunk larger sets yourself.
+> **Note:** Like `insert()` and query `delete()`, `bulkUpdate()` sends larger lists in requests of up to 200 records (`bulk_operation_size`) and returns the merged per-record results. `allOrNone` applies to each request, not across requests: if a later request fails, earlier ones have already been saved.
 
 ### Basic Usage
 
@@ -128,12 +128,8 @@ $updates = $accounts->map(function ($account) {
     ];
 });
 
-// Chunk into requests of at most 200 records
-$adapter = app(SalesforceAdapter::class);
-
-$updates->chunk(200)->each(
-    fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all())
-);
+// Any number of records; sent 200 per request
+$results = app(SalesforceAdapter::class)->bulkUpdate('Account', $updates->values()->all());
 ```
 
 ## Bulk Delete

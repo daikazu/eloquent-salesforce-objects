@@ -624,3 +624,40 @@ describe('default page size', function () {
         expect(Account::query()->simplePaginate(null, ['Id'])->perPage())->toBe(40);
     });
 });
+
+describe('pagination with $defaultColumns', function () {
+    beforeEach(function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('describe')->andReturn(['fields' => array_map(
+            fn ($name) => ['name' => $name],
+            ['Id', 'Name', 'Type', 'Description', 'CreatedDate', 'LastModifiedDate', 'IsDeleted'],
+        )]);
+    });
+
+    it('paginate() selects the model\'s default columns, like get()', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, Type, Industry, ')
+                && str_contains($q, ', OwnerId, CreatedDate, LastModifiedDate, IsDeleted from Account')
+                && ! str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::paginate(10, ['*'], 'page', 1, 5);
+    });
+
+    it('simplePaginate() selects the model\'s default columns, like get()', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_starts_with($q, 'select Id, Name, Type, Industry, ')
+                && ! str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::simplePaginate(10);
+    });
+
+    it('allColumns()->paginate() selects every field', function () {
+        Forrest::shouldReceive('query')->once()
+            ->with(Mockery::on(fn ($q) => str_contains($q, 'Description')))
+            ->andReturn(['totalSize' => 0, 'done' => true, 'records' => []]);
+
+        Account::allColumns()->paginate(10, ['*'], 'page', 1, 5);
+    });
+});

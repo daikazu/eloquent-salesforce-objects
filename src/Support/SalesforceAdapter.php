@@ -258,11 +258,13 @@ class SalesforceAdapter implements AdapterInterface
 
     /**
      * Bulk update multiple records using Salesforce Composite SObject Collections API
-     * Can handle up to 200 records per request
+     *
+     * Larger lists are sent in requests of up to 200 records (bulk_operation_size) and the
+     * per-record results merged. allOrNone applies to each request, not across requests.
      *
      * @param  string  $object  Salesforce object name
      * @param  array  $records  Array of record data arrays (must include 'Id' field)
-     * @param  bool  $allOrNone  If true, entire operation rolls back on any error
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
      * @return array Results with success/error info for each record
      *
      * @throws SalesforceException
@@ -270,7 +272,15 @@ class SalesforceAdapter implements AdapterInterface
      */
     public function bulkUpdate(string $object, array $records, bool $allOrNone = false): array
     {
-        return $this->compositeSave('patch', 'update', $object, $records, $allOrNone);
+        $results = [];
+
+        foreach (array_chunk($records, $this->bulkOperationSize) as $chunk) {
+            $response = $this->compositeSave('patch', 'update', $object, $chunk, $allOrNone);
+
+            array_push($results, ...(array_is_list($response) ? $response : [$response]));
+        }
+
+        return $results;
     }
 
     /**

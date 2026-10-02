@@ -184,7 +184,7 @@ The old picklist call returned a `Collection` of `value => label`. The new one r
 
 ### Bulk update
 
-`SObjects::update()` accepted a mixed collection of models. The adapter's `bulkUpdate()` takes one object type and at most 200 records per call:
+`SObjects::update()` accepted a mixed collection of models. The adapter's `bulkUpdate()` takes one object type and sends 200 records per request:
 
 ```php
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
@@ -192,9 +192,7 @@ use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 $adapter = app(SalesforceAdapter::class);
 
 $models->groupBy(fn ($m) => $m->getTable())->each(function ($group, $object) use ($adapter) {
-    $group->map(fn ($m) => ['Id' => $m->Id] + $m->getDirty())
-        ->chunk(200)
-        ->each(fn ($chunk) => $adapter->bulkUpdate($object, $chunk->values()->all(), allOrNone: false));
+    $adapter->bulkUpdate($object, $group->map(fn ($m) => ['Id' => $m->Id] + $m->getDirty())->values()->all());
 });
 ```
 
@@ -278,7 +276,7 @@ Check each of these explicitly. Nothing fails loudly when they go wrong.
 4. **Exceptions.** See Step 7.
 5. **String casting.** `(string) $model` returns JSON instead of the Id.
 6. **Picklists** return a list of arrays instead of a `value => label` Collection.
-7. **Pagination** selects every field unless you pass columns to `paginate()` / `simplePaginate()`. The total is capped at 2000 because of SOQL `OFFSET`.
+7. **Pagination** total is capped at 2000 because of SOQL `OFFSET`.
 
 ## Step 9: Verify
 

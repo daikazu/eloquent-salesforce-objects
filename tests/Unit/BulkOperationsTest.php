@@ -772,3 +772,43 @@ describe('bulk operation failure logging and id lookup', function () {
         expect(Account::where('Name', 'Gone')->delete())->toBe(1);
     });
 });
+
+describe('adapter bulkUpdate', function () {
+    it('sends up to 200 records per request and merges the results', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+
+        $records = array_map(fn ($i) => ['Id' => sprintf('001xx%013d', $i), 'Name' => "A{$i}"], range(1, 450));
+        $sizes = [];
+
+        Forrest::shouldReceive('patch')->times(3)
+            ->with('v64.0/composite/sobjects', Mockery::on(function ($args) use (&$sizes) {
+                $sizes[] = count($args['body']['records']);
+
+                return $args['body']['records'][0]['attributes'] === ['type' => 'Account'];
+            }))
+            ->andReturnUsing(fn ($path, $args) => array_map(
+                fn ($record) => ['id' => $record['Id'], 'success' => true, 'errors' => []],
+                $args['body']['records']
+            ));
+
+        $results = app(SalesforceAdapter::class)->bulkUpdate('Account', $records);
+
+        expect($sizes)->toBe([200, 200, 50]);
+        expect($results)->toHaveCount(450);
+        expect($results[449]['id'])->toBe('001xx0000000000450');
+    });
+
+    it('makes one request for 200 records or fewer', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('patch')->once()->andReturn([['id' => '001A', 'success' => true]]);
+
+        expect(app(SalesforceAdapter::class)->bulkUpdate('Account', [['Id' => '001A', 'Name' => 'x']]))->toHaveCount(1);
+    });
+
+    it('makes no request for an empty list', function () {
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+        Forrest::shouldReceive('patch')->never();
+
+        expect(app(SalesforceAdapter::class)->bulkUpdate('Account', []))->toBe([]);
+    });
+});

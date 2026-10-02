@@ -118,6 +118,7 @@ Lead::where('Email', $email)->exists();
 | `whereColumn()`, `whereBetweenColumns()` | A semi-join, or filter in PHP |
 | `distinct()` | `groupBy('Field')`, or `distinct()->count('Field')` for `COUNT_DISTINCT()` |
 | `inRandomOrder()` | `->get()->shuffle()` |
+| `whereTime()` | Compare the full datetime: `where('CreatedDate', '>=', now()->setTime(10, 0))` |
 | `join()`, `leftJoin()`, `crossJoin()`, `joinSub()`, etc. | `with()` for child records, `select('Account.Name')` for parent fields, a semi-join to filter |
 | `$model->restore()` | Not possible through the REST API |
 | `->batch()` | `SalesforceBatch` |
@@ -147,7 +148,7 @@ Lead::orderBy('LastName')->simplePaginate(25);
 ```
 
 - SOQL `OFFSET` caps at 2000, so the paginator total is capped at 2000.
-- `paginate()` and `simplePaginate()` select **every** field unless you pass columns. They do not apply `$defaultColumns`.
+- `paginate()` and `simplePaginate()` select `$defaultColumns` like `get()` does; use `allColumns()->paginate()` for every field.
 - Without a page size, pagination uses the `default_page_size` config (`SALESFORCE_PAGE_SIZE`, 200 by default). A model's own `protected $perPage` overrides it.
 
 ## Relationships
@@ -232,17 +233,18 @@ $failed = $results->where('success', false);
 $deleted = Lead::where('LeadSource', 'Spam')->delete(); // number of records actually deleted
 ```
 
-There is **no** `Model::bulkUpdate()`. Bulk updates go through the adapter, which accepts at most 200 records per call, so chunk them yourself:
+There is **no** `Model::bulkUpdate()`. Bulk updates go through the adapter, which sends 200 records per request (`allOrNone` applies per request):
 
 ```php
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 
 $adapter = app(SalesforceAdapter::class);
 
-Account::where('Industry', 'Tech')->get()
+$records = Account::where('Industry', 'Tech')->get()
     ->map(fn ($a) => ['Id' => $a->Id, 'Rating' => 'Hot'])
-    ->chunk(200)
-    ->each(fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all(), allOrNone: false));
+    ->values()->all();
+
+$results = $adapter->bulkUpdate('Account', $records); // one result per record
 ```
 
 ## Batch queries (up to 25 queries in one API call)

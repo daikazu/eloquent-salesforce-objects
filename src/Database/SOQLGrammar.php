@@ -181,6 +181,14 @@ class SOQLGrammar extends Grammar
         return "{$column} {$where['operator']} {$value}";
     }
 
+    protected function whereTime(Builder $query, $where): string
+    {
+        throw new InvalidArgumentException(
+            'SOQL has no time-of-day comparison. Compare the full datetime instead, '
+            . 'e.g. ->where(\'CreatedDate\', \'>=\', now()->setTime(10, 0)), or filter the results in PHP.'
+        );
+    }
+
     protected function whereYear(Builder $query, $where): string
     {
         return $this->datePartWhere('CALENDAR_YEAR', $where);

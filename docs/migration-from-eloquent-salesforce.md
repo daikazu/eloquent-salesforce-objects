@@ -448,7 +448,7 @@ Lead::insert([['Email' => 'a@test.com'], ['Email' => 'b@test.com']]);
 
 #### Bulk Update
 
-`SObjects::update($models, $allOrNone)` accepted a mixed collection of models. The new `SalesforceAdapter::bulkUpdate()` takes one object type and at most 200 records per call, and there is no `Model::bulkUpdate()`:
+`SObjects::update($models, $allOrNone)` accepted a mixed collection of models. The new `SalesforceAdapter::bulkUpdate()` takes one object type, sends 200 records per request, and there is no `Model::bulkUpdate()`. `allOrNone` applies to each 200-record request, not to the whole list:
 
 ```php
 // OLD
@@ -459,9 +459,11 @@ use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
 
 $adapter = app(SalesforceAdapter::class);
 
-$accounts->map(fn ($account) => ['Id' => $account->Id] + $account->getDirty())
-    ->chunk(200)
-    ->each(fn ($chunk) => $adapter->bulkUpdate('Account', $chunk->values()->all(), allOrNone: true));
+$adapter->bulkUpdate(
+    'Account',
+    $accounts->map(fn ($account) => ['Id' => $account->Id] + $account->getDirty())->values()->all(),
+    allOrNone: true,
+);
 ```
 
 For a mixed collection, group by `$model->getTable()` first and call `bulkUpdate()` once per object type.

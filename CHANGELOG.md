@@ -21,6 +21,9 @@ All notable changes to `eloquent-salesforce-objects` will be documented in this 
 
 ### Fixed
 
+- **`paginate()` and `simplePaginate()` use `$defaultColumns`**, like `get()` and `cursor()`. Before, they selected every field unless you passed columns.
+- **`SalesforceAdapter::bulkUpdate()` accepts any number of records**, sending 200 per request and merging the results, like `insert()` and `delete()`. Before, it threw above 200. `allOrNone` applies per request.
+- **`whereTime()` / `orWhereTime()` throw `InvalidArgumentException`.** SOQL has no time-of-day comparison. Before, `whereTime()` behaved like `where()` and sent a quoted time Salesforce rejected.
 - **Date and datetime filters work.** The grammar decided which fields were dates using Laravel's `getDates()`, which is always empty because `SalesforceModel` turns timestamps off. Values are now formatted by the field's type from describe metadata (looked up only for values that can be dates):
     - `date` fields (`CloseDate`): strings and Carbon both go out as `2025-01-01`. Before, strings were quoted and Carbon values were sent as datetimes, and Salesforce rejected both.
     - `datetime` fields (`CreatedDate`): Carbon is converted to UTC first (before, a non-UTC Carbon was off by its offset), and a date-only string means midnight UTC.

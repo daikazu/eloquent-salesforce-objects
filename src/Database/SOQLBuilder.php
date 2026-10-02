@@ -389,7 +389,7 @@ class SOQLBuilder extends Builder
      */
     public function paginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null, $total = null)
     {
-        $columns = $this->getSalesForceColumns($columns);
+        $columns = $this->resolveSelectColumns($columns);
 
         // Only run COUNT query if total wasn't provided
         if ($total === null) {
@@ -434,7 +434,7 @@ class SOQLBuilder extends Builder
      */
     public function simplePaginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null)
     {
-        $columns = $this->getSalesForceColumns($columns);
+        $columns = $this->resolveSelectColumns($columns);
 
         $page = $page ?: Paginator::resolveCurrentPage($pageName);
         $perPage = $perPage ?: $this->model->getPerPage();
@@ -636,14 +636,6 @@ class SOQLBuilder extends Builder
 
         $this->query->from($table, $as);
         return $this;
-    }
-
-    /**
-     * SOQL does not support the SQL TIME() function the same way; delegate to basic where
-     */
-    public function whereTime(...$args)
-    {
-        return $this->where(...$args);
     }
 
     /**
