@@ -291,7 +291,7 @@ class SalesforceAdapter implements AdapterInterface
      * @throws SalesforceException
      * @throws AuthenticationException
      */
-    private function compositeSave(string $method, string $verb, string $object, array $records, bool $allOrNone): array
+    private function compositeSave(string $method, string $verb, string $object, array $records, bool $allOrNone, string $pathSuffix = ''): array
     {
         $this->ensureAuthenticated();
 
@@ -310,7 +310,7 @@ class SalesforceAdapter implements AdapterInterface
                 $records
             );
 
-            return Forrest::{$method}("{$this->apiVersion}/composite/sobjects", [
+            return Forrest::{$method}("{$this->apiVersion}/composite/sobjects{$pathSuffix}", [
                 'body' => [
                     'allOrNone' => $allOrNone,
                     'records'   => $preparedRecords,
@@ -319,6 +319,35 @@ class SalesforceAdapter implements AdapterInterface
         } catch (Throwable $e) {
             throw SalesforceException::fromThrowable("Bulk {$verb} failed for {$object}", $e);
         }
+    }
+
+    /**
+     * Bulk upsert records by an External Id field, using the Composite SObject Collections API
+     *
+     * Each record must include a value for $externalIdField: Salesforce updates the record
+     * with that value, or creates one if none exists. Larger lists are sent 200 per request
+     * and the per-record results merged; allOrNone applies to each request.
+     *
+     * @param  string  $object  Salesforce object name
+     * @param  string  $externalIdField  An External Id field on the object (or "Id")
+     * @param  array  $records  Array of record data arrays
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
+     * @return array Results with id/success/created/errors for each record
+     *
+     * @throws SalesforceException
+     * @throws AuthenticationException
+     */
+    public function bulkUpsert(string $object, string $externalIdField, array $records, bool $allOrNone = false): array
+    {
+        $results = [];
+
+        foreach (array_chunk($records, $this->bulkOperationSize) as $chunk) {
+            $response = $this->compositeSave('patch', 'upsert', $object, $chunk, $allOrNone, "/{$object}/{$externalIdField}");
+
+            array_push($results, ...(array_is_list($response) ? $response : [$response]));
+        }
+
+        return $results;
     }
 
     /**

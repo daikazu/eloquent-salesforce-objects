@@ -901,3 +901,89 @@ describe('query update(), touch() and forceDelete()', function () {
         expect(Account::query()->forceDelete())->toBe(2);
     });
 });
+
+describe('upsert by External Id', function () {
+    beforeEach(function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => true]);
+        Forrest::shouldReceive('hasToken')->andReturn(true);
+    });
+
+    function upsertResults(array $args): array
+    {
+        return array_map(fn ($r) => ['id' => '001' . $r['External_Id__c'], 'success' => true, 'created' => true], $args['body']['records']);
+    }
+
+    it('adapter bulkUpsert() sends 200 records per request to the upsert endpoint and merges the results', function () {
+        $records = array_map(fn ($i) => ['External_Id__c' => "E{$i}", 'Name' => "A{$i}"], range(1, 450));
+        $sizes = [];
+
+        Forrest::shouldReceive('patch')->times(3)
+            ->with('v64.0/composite/sobjects/Account/External_Id__c', Mockery::on(function ($args) use (&$sizes) {
+                $sizes[] = count($args['body']['records']);
+
+                return $args['body']['allOrNone'] === false
+                    && $args['body']['records'][0]['attributes'] === ['type' => 'Account'];
+            }))
+            ->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        $results = app(SalesforceAdapter::class)->bulkUpsert('Account', 'External_Id__c', $records);
+
+        expect($sizes)->toBe([200, 200, 50]);
+        expect($results)->toHaveCount(450);
+    });
+
+    it('upsert() sends the rows and returns how many saved', function () {
+        Forrest::shouldReceive('patch')->once()
+            ->with('v64.0/composite/sobjects/Account/External_Id__c', Mockery::on(fn ($args) => $args['body']['records'] === [
+                ['attributes' => ['type' => 'Account'], 'External_Id__c' => 'E1', 'Name' => 'Acme'],
+                ['attributes' => ['type' => 'Account'], 'External_Id__c' => 'E2', 'Name' => 'Globex'],
+            ]))
+            ->andReturn([
+                ['id' => '001A', 'success' => true, 'created' => true],
+                ['id' => null, 'success' => false, 'errors' => [['statusCode' => 'DUPLICATE_VALUE']]],
+            ]);
+
+        expect(Account::upsert([
+            ['External_Id__c' => 'E1', 'Name' => 'Acme'],
+            ['External_Id__c' => 'E2', 'Name' => 'Globex'],
+        ], 'External_Id__c'))->toBe(1);
+    });
+
+    it('accepts a single row and a one-element uniqueBy array', function () {
+        Forrest::shouldReceive('patch')->once()->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        expect(Account::upsert(['External_Id__c' => 'E1', 'Name' => 'Acme'], ['External_Id__c']))->toBe(1);
+    });
+
+    it('accepts an update list that covers every field sent', function () {
+        Forrest::shouldReceive('patch')->once()->andReturnUsing(fn ($path, $args) => upsertResults($args));
+
+        expect(Account::upsert([['External_Id__c' => 'E1', 'Name' => 'Acme']], 'External_Id__c', ['Name']))->toBe(1);
+    });
+
+    it('rejects input Salesforce upsert cannot express', function (array $values, mixed $uniqueBy, ?array $update, string $message) {
+        Forrest::shouldReceive('patch')->never();
+
+        expect(fn () => Account::upsert($values, $uniqueBy, $update))
+            ->toThrow(InvalidArgumentException::class, $message);
+    })->with([
+        'two unique fields'      => [[['A__c' => 1, 'B__c' => 2]], ['A__c', 'B__c'], null, 'exactly one External Id field'],
+        'row missing the key'    => [[['External_Id__c' => 'E1'], ['Name' => 'No key']], 'External_Id__c', null, 'has no External_Id__c value'],
+        'partial update columns' => [[['External_Id__c' => 'E1', 'Name' => 'A', 'Phone' => '1']], 'External_Id__c', ['Name'], 'updates every field you send'],
+    ]);
+
+    it('makes no request for no rows', function () {
+        Forrest::shouldReceive('patch')->never();
+
+        expect(Account::upsert([], 'External_Id__c'))->toBe(0);
+    });
+
+    it('logs a failed request and carries on when throw_exceptions is false', function () {
+        config(['eloquent-salesforce-objects.throw_exceptions' => false]);
+        Log::spy();
+        Forrest::shouldReceive('patch')->once()->andThrow(new Exception('Upsert chunk failed'));
+
+        expect(Account::upsert([['External_Id__c' => 'E1', 'Name' => 'A']], 'External_Id__c'))->toBe(0);
+        Log::shouldHaveReceived('error')->once()->withArgs(fn ($message, $context) => $context['operation'] === 'bulk upsert');
+    });
+});

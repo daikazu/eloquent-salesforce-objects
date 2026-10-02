@@ -124,6 +124,17 @@ interface AdapterInterface
     public function bulkUpdate(string $object, array $records, bool $allOrNone = false): array;
 
     /**
+     * Bulk upsert records by an External Id field (sent 200 per request)
+     *
+     * @param  string  $object  Salesforce object name
+     * @param  string  $externalIdField  An External Id field on the object (or "Id")
+     * @param  array  $records  Array of record data arrays, each including $externalIdField
+     * @param  bool  $allOrNone  If true, each request rolls back entirely if any of its records fails
+     * @return array Results with id/success/created/errors for each record
+     */
+    public function bulkUpsert(string $object, string $externalIdField, array $records, bool $allOrNone = false): array;
+
+    /**
      * Bulk delete multiple records (up to 200 per request)
      *
      * @param  string  $object  Salesforce object name

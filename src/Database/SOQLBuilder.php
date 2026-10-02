@@ -600,12 +600,7 @@ class SOQLBuilder extends Builder
             return 0;
         }
 
-        $values = array_map(
-            fn ($value) => $value instanceof DateTimeInterface
-                ? DateTimeImmutable::createFromInterface($value)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z')
-                : $value,
-            $values
-        );
+        $values = $this->prepareWriteValues($values);
 
         $table = $this->model->getTable();
         $updated = 0;
@@ -622,6 +617,85 @@ class SOQLBuilder extends Builder
         }
 
         return $updated;
+    }
+
+    /**
+     * Insert or update records by an External Id field, 200 per Composite request.
+     *
+     * Salesforce matches on exactly one External Id field and updates every field sent,
+     * so $update may only be null or list every field in the rows. Returns how many saved.
+     *
+     * @param  array<int|string, mixed>  $values  One row, or a list of rows
+     * @param  string|array<int, string>  $uniqueBy  The External Id field
+     * @param  array<int, string>|null  $update
+     */
+    public function upsert(array $values, $uniqueBy, $update = null): int
+    {
+        if ($values === []) {
+            return 0;
+        }
+
+        if (! is_array(reset($values))) {
+            $values = [$values];
+        }
+
+        $uniqueBy = (array) $uniqueBy;
+
+        if (count($uniqueBy) !== 1) {
+            throw new InvalidArgumentException('Salesforce upsert matches on exactly one External Id field; pass one field name as $uniqueBy.');
+        }
+
+        $field = (string) reset($uniqueBy);
+
+        foreach ($values as $index => $row) {
+            if (($row[$field] ?? null) === null || $row[$field] === '') {
+                throw new InvalidArgumentException("Row {$index} has no {$field} value, which Salesforce upsert needs to match records.");
+            }
+        }
+
+        if ($update !== null) {
+            $sent = array_diff(array_keys(array_merge(...array_values($values))), [$field]);
+            $missing = array_diff($sent, array_values($update));
+
+            if ($missing !== [] || ! array_is_list($update)) {
+                throw new InvalidArgumentException(
+                    'Salesforce upsert updates every field you send, so $update must be null or list all of them (missing: '
+                    . implode(', ', $missing) . '). To update only some fields, send only those fields.'
+                );
+            }
+        }
+
+        $table = $this->model->getTable();
+        $saved = 0;
+
+        foreach (array_chunk($values, $this->bulkOperationSize) as $chunk) {
+            $records = array_map(fn (array $row): array => $this->prepareWriteValues($row), $chunk);
+
+            try {
+                $saved += $this->countSuccesses($this->adapter->bulkUpsert($table, $field, $records), count($records));
+            } catch (Exception $e) {
+                // Logs, then rethrows unless throw_exceptions is off; if off, move on to the next chunk
+                $this->handleSalesforceException($e, 'bulk upsert');
+            }
+        }
+
+        return $saved;
+    }
+
+    /**
+     * Format values for the Salesforce API: dates as UTC ISO 8601.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    protected function prepareWriteValues(array $values): array
+    {
+        return array_map(
+            fn ($value) => $value instanceof DateTimeInterface
+                ? DateTimeImmutable::createFromInterface($value)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z')
+                : $value,
+            $values
+        );
     }
 
     /**
