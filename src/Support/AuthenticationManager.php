@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace Daikazu\EloquentSalesforceObjects\Support;
 
 use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
-use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Omniphx\Forrest\Providers\Laravel\Facades\Forrest;
+use Psr\Http\Client\NetworkExceptionInterface;
 use Throwable;
 
 class AuthenticationManager
@@ -172,7 +171,7 @@ class AuthenticationManager
      * Decide whether an authentication failure is worth retrying.
      *
      * Retry on:
-     *  - Connection errors (network/TLS blips)
+     *  - Network errors with no response (connect failures, TLS blips, timeouts)
      *  - HTTP 5xx responses
      *  - Salesforce's documented transient envelope:
      *    400 { "error": "unknown_error", "error_description": "retry your request" }
@@ -184,12 +183,13 @@ class AuthenticationManager
      */
     protected function isRetryable(Throwable $e): bool
     {
-        if ($e instanceof ConnectException) {
+        if ($e instanceof NetworkExceptionInterface) {
             return true;
         }
 
-        if ($e instanceof RequestException && $e->hasResponse()) {
-            $response = $e->getResponse();
+        $response = HttpErrorResponse::from($e);
+
+        if ($response !== null) {
             $status = $response->getStatusCode();
             $body = (string) $response->getBody();
 

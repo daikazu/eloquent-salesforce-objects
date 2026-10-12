@@ -4,6 +4,7 @@ use Daikazu\EloquentSalesforceObjects\Examples\Account;
 use Daikazu\EloquentSalesforceObjects\Exceptions\MalformedQueryException;
 use Daikazu\EloquentSalesforceObjects\Exceptions\SalesforceException;
 use Daikazu\EloquentSalesforceObjects\Support\SalesforceAdapter;
+use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
@@ -27,7 +28,7 @@ afterEach(function () {
  */
 function forrestHttpError(int $status, string $body, array $headers = []): ForrestException
 {
-    $guzzle = new RequestException(
+    $guzzle = new BadResponseException(
         "Client error: {$status}",
         new Request('GET', 'https://example.my.salesforce.com/services/data/v64.0/query'),
         new Response($status, $headers, $body)
@@ -104,6 +105,20 @@ describe('SalesforceException messages from HTTP errors', function () {
 
         expect(fn () => app(SalesforceAdapter::class)->query('select Id from Account'))
             ->toThrow(SalesforceException::class, 'Query failed: Connection refused');
+    });
+
+    it('keeps the original message for a Guzzle request error without a response', function () {
+        $error = RequestException::create(new Request('GET', 'https://example.my.salesforce.com/services/data/v64.0/query'));
+        Forrest::shouldReceive('query')->andThrow($error);
+
+        try {
+            app(SalesforceAdapter::class)->query('select Id from Account');
+            $this->fail('Expected a SalesforceException');
+        } catch (SalesforceException $e) {
+            expect($e->getMessage())->toBe('Query failed: ' . $error->getMessage());
+            expect($e->statusCode)->toBeNull();
+            expect($e->getPrevious())->toBe($error);
+        }
     });
 });
 

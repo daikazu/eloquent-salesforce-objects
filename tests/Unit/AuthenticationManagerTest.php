@@ -4,6 +4,7 @@ use Daikazu\EloquentSalesforceObjects\Exceptions\AuthenticationException;
 use Daikazu\EloquentSalesforceObjects\Support\AuthenticationManager;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
@@ -190,6 +191,19 @@ describe('ensureAuthenticated', function () {
 
         expect(fn () => $this->manager->ensureAuthenticated())
             ->toThrow(AuthenticationException::class, 'Failed to authenticate with Salesforce: Auth failed');
+    });
+
+    it('does not retry on a Guzzle request error without a response', function () {
+        Forrest::shouldReceive('hasToken')
+            ->twice()
+            ->andReturn(false);
+
+        Forrest::shouldReceive('authenticate')
+            ->once()
+            ->andThrow(RequestException::create(new Request('POST', 'https://login.salesforce.com/services/oauth2/token')));
+
+        expect(fn () => $this->manager->ensureAuthenticated())
+            ->toThrow(AuthenticationException::class);
     });
 });
 

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Daikazu\EloquentSalesforceObjects\Exceptions;
 
+use Daikazu\EloquentSalesforceObjects\Support\HttpErrorResponse;
 use Exception;
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -39,8 +39,9 @@ class SalesforceException extends Exception
         $response = null;
 
         for ($current = $e; $current !== null; $current = $current->getPrevious()) {
-            if ($current instanceof RequestException && $current->hasResponse()) {
-                $response = $current->getResponse();
+            $response = HttpErrorResponse::from($current);
+
+            if ($response !== null) {
                 break;
             }
         }
